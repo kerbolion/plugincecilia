@@ -305,10 +305,9 @@ class CotizadorEventosWP {
         $data_type = $request['type'];
         $table_name = $wpdb->prefix . 'cotizador_eventos_data';
         
-        // Buscar datos de cualquier usuario admin (user_id != 0)
-        // Tomamos los datos del primer usuario que los tenga
+        // Buscar datos del usuario con ID 2 (shop_manager)
         $result = $wpdb->get_var($wpdb->prepare(
-            "SELECT data_content FROM $table_name WHERE user_id != 0 AND data_type = %s ORDER BY id ASC LIMIT 1",
+            "SELECT data_content FROM $table_name WHERE user_id = 2 AND data_type = %s LIMIT 1",
             $data_type
         ));
         
@@ -388,13 +387,8 @@ class CotizadorEventosWP {
         // Convertir solicitud pública en cotización real
         $cotizacion = $this->convertir_solicitud_a_cotizacion($data);
         
-        // Buscar el primer usuario admin para asociar la cotización
-        $admin_user = get_users(array(
-            'role' => 'administrator',
-            'number' => 1
-        ));
-        
-        $user_id = !empty($admin_user) ? $admin_user[0]->ID : 1;
+        // Asignar cotización al usuario con ID 2 (shop_manager)
+        $user_id = 2;
         
         // Obtener cotizaciones existentes del admin
         $cotizaciones_existentes = $wpdb->get_var($wpdb->prepare(
