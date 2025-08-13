@@ -515,6 +515,17 @@ class CotizadorEventosWP {
         $motivos_ids = $this->convertir_nombres_a_ids($data['motivos'], 'motivosEvento', $user_id);
         $experiencias_ids = $this->convertir_nombres_a_ids($data['experiencias'], 'experiencias', $user_id);
         
+        // Parsear fecha del evento
+        $fecha_evento_original = $data['cliente']['fechaEvento'];
+        try {
+            $fecha_dt = new DateTime($fecha_evento_original);
+            $fecha_evento = $fecha_dt->format('d/m/Y');
+            $hora_evento = $fecha_dt->format('H:i');
+        } catch (Exception $e) {
+            $fecha_evento = date('d/m/Y');
+            $hora_evento = '00:00';
+        }
+        
         // Crear la cotización
         $cotizacion = array(
             'id' => time() . rand(100, 999), // ID único
@@ -524,9 +535,9 @@ class CotizadorEventosWP {
                 'nombre' => $data['cliente']['nombre'] . ' (Solicitud Web)',
                 'email' => $data['cliente']['email'],
                 'telefono' => $data['cliente']['telefono'],
-                'fechaEvento' => $data['cliente']['fechaEvento'],
-                'horaEvento' => explode(' ', $data['cliente']['fechaEvento'])[1] ?? '00:00',
-                'fechaEventoOriginal' => $data['cliente']['fechaEvento'],
+                'fechaEvento' => $fecha_evento,
+                'horaEvento' => $hora_evento,
+                'fechaEventoOriginal' => $fecha_evento_original,
                 'cantidadPersonas' => $data['cliente']['cantidadPersonas'],
                 'formatoEvento' => $data['cliente']['formatoEvento']
             ),
@@ -719,6 +730,8 @@ class CotizadorEventosWP {
             case 'plantillaDescarga':
                 return "COTIZACIÓN DE EVENTO GASTRONÓMICO\n\n" .
                        "Cliente: [cliente]\n" .
+                       "Email: [email]\n" .
+                       "Teléfono: [telefono]\n" .
                        "Fecha del Evento: [fecha_evento]\n" .
                        "Cantidad de Personas: [personas]\n" .
                        "Formato: [formato]\n\n" .

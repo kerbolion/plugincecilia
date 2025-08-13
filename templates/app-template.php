@@ -107,6 +107,16 @@ if (!defined('ABSPATH')) {
                     <input type="text" id="nombreCliente" placeholder="Nombre completo">
                 </div>
                 <div class="form-group">
+                    <label for="emailCliente">Email de Contacto:</label>
+                    <input type="email" id="emailCliente" placeholder="tu@email.com">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="telefonoCliente">Teléfono:</label>
+                    <input type="tel" id="telefonoCliente" placeholder="Número de teléfono">
+                </div>
+                <div class="form-group">
                     <label for="fechaEvento">Fecha del Evento:</label>
                     <input type="datetime-local" id="fechaEvento">
                 </div>
@@ -381,6 +391,8 @@ if (!defined('ABSPATH')) {
             <div style="margin-bottom: 20px; padding: 15px; background: #e3f2fd; border-radius: 8px; color: #1976d2;">
                 <strong>💡 Variables disponibles:</strong><br>
                 <code>[cliente]</code> - Nombre del cliente<br>
+                <code>[email]</code> - Email del cliente<br>
+                <code>[telefono]</code> - Teléfono del cliente<br>
                 <code>[fecha_evento]</code> - Fecha del evento<br>
                 <code>[hora_evento]</code> - Hora del evento<br>
                 <code>[personas]</code> - Cantidad de personas<br>

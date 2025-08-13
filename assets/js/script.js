@@ -135,6 +135,665 @@ function copiarProfundo(obj) {
     }
 }
 
+// Función para actualizar el resumen en tiempo real - CORREGIDA
+function actualizarResumenTiempoReal() {
+    const nombreCliente = document.getElementById('nombreCliente').value.trim();
+    const emailCliente = document.getElementById('emailCliente').value.trim();
+    const telefonoCliente = document.getElementById('telefonoCliente').value.trim();
+    const fechaEvento = document.getElementById('fechaEvento').value;
+    const cantidadPersonas = parseInt(document.getElementById('cantidadPersonas').value);
+    const formatoEvento = document.getElementById('formatoEvento').value;
+    const estadoSeleccionado = document.getElementById('estadoCotizacion').value;
+
+    if (!nombreCliente || !fechaEvento || !cantidadPersonas) {
+        document.getElementById('resumenCotizacion').style.display = 'none';
+        return;
+    }
+
+    const motivosSeleccionados = Array.from(document.querySelectorAll('input[name="motivo"]:checked')).map(cb => cb.value);
+    const experienciasSeleccionadas = Array.from(document.querySelectorAll('input[name="experiencia"]:checked')).map(cb => cb.value);
+    const valoresCamposPersonalizados = obtenerValoresCamposPersonalizados();
+
+    const productosSeleccionados = [];
+    
+    productos.forEach(producto => {
+        const checkbox = document.getElementById(`producto_${producto.id}`);
+        const cantidadInput = document.getElementById(`cantidad_${producto.id}`);
+        
+        if (checkbox && checkbox.checked && cantidadInput) {
+            const cantidad = parseInt(cantidadInput.value) || 0;
+            if (cantidad > 0) {
+                productosSeleccionados.push({
+                    ...producto,
+                    cantidad: cantidad,
+                    subtotal: producto.precio * cantidad
+                });
+            }
+        }
+    });
+
+    if (productosSeleccionados.length === 0) {
+        mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados);
+        return;
+    }
+
+    const subtotalProductos = productosSeleccionados.reduce((sum, p) => sum + p.subtotal, 0);
+    const costoTotal = productosSeleccionados.reduce((sum, p) => sum + (p.costo * p.cantidad), 0);
+    const margenTotal = subtotalProductos - costoTotal;
+
+    let cotizacionId;
+    if (editandoCotizacion && cotizacionOriginalEnEdicion) {
+        cotizacionId = cotizacionOriginalEnEdicion.id;
+    } else {
+        cotizacionId = Date.now();
+    }
+
+    cotizacionActual = {
+        id: cotizacionId,
+        fechaCotizacion: new Date().toLocaleDateString(),
+        estado: estadoSeleccionado,
+        cliente: {
+            nombre: nombreCliente,
+            email: emailCliente,
+            telefono: telefonoCliente,
+            fechaEvento: new Date(fechaEvento).toLocaleDateString(),
+            horaEvento: new Date(fechaEvento).toLocaleTimeString(),
+            fechaEventoOriginal: fechaEvento,
+            cantidadPersonas,
+            formatoEvento
+        },
+        motivos: motivosSeleccionados,
+        experiencias: experienciasSeleccionadas,
+        productos: productosSeleccionados,
+        camposPersonalizados: valoresCamposPersonalizados,
+        totales: {
+            subtotal: subtotalProductos,
+            costoTotal,
+            margenTotal,
+            porcentajeMargen: costoTotal > 0 ? ((margenTotal / costoTotal) * 100).toFixed(1) : 0
+        }
+    };
+
+    mostrarResumenCotizacion();
+}
+
+// Función para mostrar resumen vacío - CORREGIDA
+function mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados) {
+    const container = document.getElementById('resumenCotizacion');
+    const estadoCotizacion = estadosCotizacion.find(est => est.id === estadoSeleccionado) || estadosCotizacion[0];
+
+    const motivosTexto = motivosSeleccionados.map(id => {
+        const motivo = motivosEvento.find(m => m.id === id);
+        return motivo ? `${motivo.icono} ${motivo.nombre}` : id;
+    });
+
+    const experienciasTexto = experienciasSeleccionadas.map(id => {
+        const experiencia = experiencias.find(e => e.id === id);
+        return experiencia ? `${experiencia.icono} ${experiencia.nombre}` : id;
+    });
+
+    let camposPersonalizadosHtml = '';
+    if (camposPersonalizados.length > 0 && Object.keys(valoresCamposPersonalizados).some(key => valoresCamposPersonalizados[key])) {
+        camposPersonalizadosHtml = `
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: #2c3e50; margin-bottom: 10px;">📋 Información Adicional:</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    ${camposPersonalizados.map(campo => {
+                        const valor = valoresCamposPersonalizados[campo.id];
+                        if (valor) {
+                            return `
+                                <div style="background: white; padding: 10px; border-radius: 8px; border-left: 3px solid #17a2b8;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">${campo.nombre}</div>
+                                    <div style="font-weight: 600; color: #2c3e50;">${valor}</div>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    const politicas = localStorage.getItem('politicas') || '';
+
+    let html = `
+        <div class="cotizacion-resumen">
+            <h3 style="color: #667eea; margin-bottom: 20px; text-align: center;">📊 Vista Previa de Cotización</h3>
+            
+            <div class="cotizacion-header">
+                <div class="info-box">
+                    <div class="info-label">Cliente</div>
+                    <div class="info-value">${nombreCliente}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Email</div>
+                    <div class="info-value">${emailCliente}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Teléfono</div>
+                    <div class="info-value">${telefonoCliente}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Estado</div>
+                    <div class="info-value" style="color: ${estadoCotizacion.color}; display: flex; align-items: center; gap: 5px;">
+                        <span>${estadoCotizacion.icono}</span>
+                        <span>${estadoCotizacion.nombre}</span>
+                    </div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Fecha del Evento</div>
+                    <div class="info-value">${new Date(fechaEvento).toLocaleDateString()}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Hora</div>
+                    <div class="info-value">${new Date(fechaEvento).toLocaleTimeString()}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Personas</div>
+                    <div class="info-value">${cantidadPersonas} (${formatoEvento})</div>
+                </div>
+            </div>
+
+            ${camposPersonalizadosHtml}
+
+            ${motivosSeleccionados.length > 0 ? `
+                <div style="margin-bottom: 20px;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Motivo del Evento:</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        ${motivosTexto.map(m => `<span style="background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${m}</span>`).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${experienciasSeleccionadas.length > 0 ? `
+                <div style="margin-bottom: 20px;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Experiencias Seleccionadas:</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        ${experienciasTexto.map(e => `<span style="background: #28a745; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${e}</span>`).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 15px; margin: 20px 0;">
+                <div style="font-size: 3rem; margin-bottom: 15px;">🍽️</div>
+                <h4 style="color: #6c757d; margin-bottom: 10px;">No hay productos seleccionados</h4>
+                <p style="color: #6c757d;">Selecciona productos del menú para ver el detalle y total de la cotización</p>
+            </div>
+
+            ${politicas ? `
+                <div class="politicas-section">
+                    <h4 style="color: #2c3e50; margin-bottom: 15px;">📋 Políticas de la Empresa</h4>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
+                        ${politicas}
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="no-print" style="text-align: center; margin-top: 20px;">
+                <button class="btn" onclick="descargarCotizacion()" disabled style="opacity: 0.5;">📄 Descargar TXT</button>
+                <button class="btn" onclick="guardarCotizacion()" disabled style="opacity: 0.5;">💾 Guardar Cotización</button>
+                <div style="margin-top: 10px; font-size: 0.9rem; color: #6c757d;">Agrega productos para habilitar las acciones</div>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
+// Función para limpiar cotización - CORREGIDA
+function limpiarCotizacion(sinConfirmacion = false) {
+    if (!sinConfirmacion && !confirm('¿Estás seguro de limpiar el formulario? Se perderán todos los datos ingresados.')) {
+        return;
+    }
+    
+    document.getElementById('nombreCliente').value = '';
+    document.getElementById('emailCliente').value = '';
+    document.getElementById('telefonoCliente').value = '';
+    document.getElementById('fechaEvento').value = '';
+    document.getElementById('cantidadPersonas').value = '';
+    document.getElementById('formatoEvento').value = 'sentado';
+    
+    const estadosOrdenados = estadosCotizacion.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    if (estadosOrdenados.length > 0 && document.getElementById('estadoCotizacion')) {
+        document.getElementById('estadoCotizacion').value = estadosOrdenados[0].id;
+    }
+
+    camposPersonalizados.forEach(campo => {
+        const elemento = document.getElementById(`campo_${campo.id}`);
+        if (elemento) {
+            if (campo.tipo === 'checkbox') {
+                elemento.checked = false;
+            } else {
+                elemento.value = '';
+            }
+        }
+    });
+
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+        cb.closest('.checkbox-item')?.classList.remove('selected');
+    });
+
+    document.querySelectorAll('input[id^="producto_"]').forEach(checkbox => {
+        checkbox.checked = false;
+        const productoId = checkbox.value;
+        const cantidadInput = document.getElementById(`cantidad_${productoId}`);
+        const subtotalDiv = document.getElementById(`subtotal_${productoId}`);
+        
+        if (cantidadInput) {
+            cantidadInput.disabled = true;
+            cantidadInput.value = 1;
+            cantidadInput.max = '';
+        }
+        if (subtotalDiv) {
+            subtotalDiv.textContent = ocultarPrecios ? 'Oculto' : '$0.00';
+        }
+    });
+
+    const resumenValidacion = document.getElementById('resumenValidacion');
+    if (resumenValidacion) {
+        resumenValidacion.remove();
+    }
+
+    document.getElementById('resumenCotizacion').style.display = 'none';
+    
+    if (editandoCotizacion) {
+        salirModoEdicion();
+    }
+    
+    vistaPresentacion = false;
+    ocultarPrecios = false;
+    
+    if (!sinConfirmacion) {
+        mostrarAlerta('alertCotizacion', 'Formulario limpiado.', 'success');
+    }
+}
+
+// Función para editar cotización - CORREGIDA
+function editarCotizacion(index) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cot = cotizaciones[index];
+        
+        if (!cot) return;
+
+        showTab('cotizador');
+        
+        limpiarCotizacion(true);
+        
+        setTimeout(() => {
+            document.getElementById('nombreCliente').value = cot.cliente.nombre;
+            
+            // Cargar email y teléfono si existen
+            if (cot.cliente.email) {
+                document.getElementById('emailCliente').value = cot.cliente.email;
+            }
+            if (cot.cliente.telefono) {
+                document.getElementById('telefonoCliente').value = cot.cliente.telefono;
+            }
+            
+            document.getElementById('cantidadPersonas').value = cot.cliente.cantidadPersonas;
+            document.getElementById('formatoEvento').value = cot.cliente.formatoEvento;
+            
+            // Cargar estado - CORREGIDO
+            if (cot.estado && document.getElementById('estadoCotizacion')) {
+                // Verificar que el estado existe en la lista
+                const estadoExiste = estadosCotizacion.some(estado => estado.id === cot.estado);
+                if (estadoExiste) {
+                    document.getElementById('estadoCotizacion').value = cot.estado;
+                } else {
+                    // Si el estado no existe, usar el primero por defecto
+                    const estadosOrdenados = estadosCotizacion.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+                    if (estadosOrdenados.length > 0) {
+                        document.getElementById('estadoCotizacion').value = estadosOrdenados[0].id;
+                    }
+                }
+            }
+            
+            if (cot.cliente.fechaEventoOriginal) {
+                document.getElementById('fechaEvento').value = cot.cliente.fechaEventoOriginal;
+            } else {
+                try {
+                    const fechaParts = cot.cliente.fechaEvento.split('/');
+                    const horaParts = cot.cliente.horaEvento.split(':');
+                    
+                    if (fechaParts.length === 3 && horaParts.length >= 2) {
+                        const dia = fechaParts[0].padStart(2, '0');
+                        const mes = fechaParts[1].padStart(2, '0');
+                        const año = fechaParts[2];
+                        const hora = horaParts[0].padStart(2, '0');
+                        const minuto = horaParts[1].padStart(2, '0');
+                        
+                        const fechaISO = `${año}-${mes}-${dia}T${hora}:${minuto}`;
+                        document.getElementById('fechaEvento').value = fechaISO;
+                    }
+                } catch (error) {
+                    console.warn('Error al convertir fecha:', error);
+                }
+            }
+
+            if (cot.camposPersonalizados) {
+                cargarValoresCamposPersonalizados(cot.camposPersonalizados);
+            }
+
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+                cb.closest('.checkbox-item')?.classList.remove('selected');
+            });
+
+            if (cot.motivos && cot.motivos.length > 0) {
+                cot.motivos.forEach(motivo => {
+                    const checkbox = document.querySelector(`input[name="motivo"][value="${motivo}"]`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        checkbox.closest('.checkbox-item')?.classList.add('selected');
+                    }
+                });
+            }
+
+            if (cot.experiencias && cot.experiencias.length > 0) {
+                cot.experiencias.forEach(experiencia => {
+                    const checkbox = document.querySelector(`input[name="experiencia"][value="${experiencia}"]`);
+                    if (checkbox) {
+                        checkbox.checked = true;
+                        checkbox.closest('.checkbox-item')?.classList.add('selected');
+                    }
+                });
+            }
+
+            setTimeout(() => {
+                if (cot.productos && cot.productos.length > 0) {
+                    cot.productos.forEach(prod => {
+                        const checkbox = document.getElementById(`producto_${prod.id}`);
+                        const cantidadInput = document.getElementById(`cantidad_${prod.id}`);
+                        
+                        if (checkbox && cantidadInput) {
+                            checkbox.checked = true;
+                            cantidadInput.disabled = false;
+                            cantidadInput.value = prod.cantidad;
+                            calcularTotalProducto(prod.id);
+                        } else {
+                            console.warn(`Producto con ID ${prod.id} no encontrado - posiblemente fue eliminado`);
+                        }
+                    });
+                }
+
+                validarTotalesProductos();
+                actualizarResumenTiempoReal();
+            }, 200);
+        }, 200);
+
+        entrarModoEdicion(cot);
+        
+        mostrarAlerta('alertCotizacion', 'Cotización cargada para edición. Al guardar se creará una nueva versión.', 'success');
+    });
+}
+
+// Función para agregar eventos de actualización - CORREGIDA
+function agregarEventosActualizacion() {
+    const campos = ['nombreCliente', 'emailCliente', 'telefonoCliente', 'fechaEvento', 'cantidadPersonas', 'formatoEvento', 'estadoCotizacion'];
+    campos.forEach(campoId => {
+        const elemento = document.getElementById(campoId);
+        if (elemento) {
+            elemento.addEventListener('input', actualizarResumenTiempoReal);
+            elemento.addEventListener('change', actualizarResumenTiempoReal);
+        }
+    });
+    
+    document.getElementById('tipoCampo').addEventListener('change', toggleOpcionesDesplegable);
+}
+
+// Función para procesar plantilla - CORREGIDA
+function procesarPlantilla(plantilla, cotizacion) {
+    const politicas = localStorage.getItem('politicas') || '';
+    
+    const motivosTexto = cotizacion.motivos && cotizacion.motivos.length > 0 
+        ? 'Motivo del Evento:\n' + cotizacion.motivos.map(id => {
+            const motivo = motivosEvento.find(m => m.id === id);
+            return motivo ? `- ${motivo.icono} ${motivo.nombre}` : `- ${id}`;
+        }).join('\n')
+        : '';
+    
+    const experienciasTexto = cotizacion.experiencias && cotizacion.experiencias.length > 0 
+        ? 'Experiencias Seleccionadas:\n' + cotizacion.experiencias.map(id => {
+            const experiencia = experiencias.find(e => e.id === id);
+            return experiencia ? `- ${experiencia.icono} ${experiencia.nombre}` : `- ${id}`;
+        }).join('\n')
+        : '';
+    
+    const productosTexto = cotizacion.productos && cotizacion.productos.length > 0
+        ? cotizacion.productos.map(p => 
+            `${p.nombre}\n  Precio unitario: $${p.precio.toFixed(2)}\n  Cantidad: ${p.cantidad}\n  Subtotal: $${p.subtotal.toFixed(2)}`
+        ).join('\n\n')
+        : 'No hay productos seleccionados';
+    
+    const estadoCotizacion = estadosCotizacion.find(est => est.id === cotizacion.estado) || { nombre: 'Sin estado', icono: '❓' };
+    const estadoTexto = `${estadoCotizacion.icono} ${estadoCotizacion.nombre}`;
+    
+    let contenido = plantilla;
+    
+    // Reemplazar variables básicas
+    contenido = contenido.replace(/\[cliente\]/g, cotizacion.cliente?.nombre || '');
+    contenido = contenido.replace(/\[email\]/g, cotizacion.cliente?.email || '');
+    contenido = contenido.replace(/\[telefono\]/g, cotizacion.cliente?.telefono || '');
+    contenido = contenido.replace(/\[fecha_evento\]/g, cotizacion.cliente?.fechaEvento || '');
+    contenido = contenido.replace(/\[hora_evento\]/g, cotizacion.cliente?.horaEvento || '');
+    contenido = contenido.replace(/\[personas\]/g, cotizacion.cliente?.cantidadPersonas || '');
+    contenido = contenido.replace(/\[formato\]/g, cotizacion.cliente?.formatoEvento || '');
+    contenido = contenido.replace(/\[estado\]/g, estadoTexto);
+    contenido = contenido.replace(/\[motivos\]/g, motivosTexto);
+    contenido = contenido.replace(/\[experiencias\]/g, experienciasTexto);
+    contenido = contenido.replace(/\[productos\]/g, productosTexto);
+    contenido = contenido.replace(/\[total\]/g, cotizacion.totales?.subtotal?.toFixed(2) || '0.00');
+    contenido = contenido.replace(/\[costo_total\]/g, cotizacion.totales?.costoTotal?.toFixed(2) || '0.00');
+    contenido = contenido.replace(/\[margen\]/g, cotizacion.totales?.margenTotal?.toFixed(2) || '0.00');
+    contenido = contenido.replace(/\[porcentaje_margen\]/g, cotizacion.totales?.porcentajeMargen || '0');
+    contenido = contenido.replace(/\[fecha_cotizacion\]/g, cotizacion.fechaCotizacion || '');
+    contenido = contenido.replace(/\[politicas\]/g, politicas);
+    
+    // Reemplazar variables de campos personalizados
+    if (cotizacion.camposPersonalizados) {
+        camposPersonalizados.forEach(campo => {
+            const valor = cotizacion.camposPersonalizados[campo.id] || '';
+            const regex = new RegExp(`\\[${campo.id}\\]`, 'g');
+            contenido = contenido.replace(regex, valor);
+        });
+    }
+    
+    return contenido;
+}
+
+// Función para mostrar resumen de cotización - CORREGIDA
+function mostrarResumenCotizacion() {
+    const container = document.getElementById('resumenCotizacion');
+    const cot = cotizacionActual;
+
+    const motivosTexto = cot.motivos.map(id => {
+        const motivo = motivosEvento.find(m => m.id === id);
+        return motivo ? `${motivo.icono} ${motivo.nombre}` : id;
+    });
+
+    const experienciasTexto = cot.experiencias.map(id => {
+        const experiencia = experiencias.find(e => e.id === id);
+        return experiencia ? `${experiencia.icono} ${experiencia.nombre}` : id;
+    });
+
+    const estadoCotizacion = estadosCotizacion.find(est => est.id === cot.estado) || estadosCotizacion[0];
+
+    let camposPersonalizadosHtml = '';
+    if (camposPersonalizados.length > 0 && cot.camposPersonalizados && Object.keys(cot.camposPersonalizados).some(key => cot.camposPersonalizados[key])) {
+        camposPersonalizadosHtml = `
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: #2c3e50; margin-bottom: 10px;">📋 Información Adicional:</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    ${camposPersonalizados.map(campo => {
+                        const valor = cot.camposPersonalizados[campo.id];
+                        if (valor) {
+                            return `
+                                <div style="background: white; padding: 10px; border-radius: 8px; border-left: 3px solid #17a2b8;">
+                                    <div style="font-size: 0.9rem; color: #6c757d;">${campo.nombre}</div>
+                                    <div style="font-weight: 600; color: #2c3e50;">${valor}</div>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    const politicas = localStorage.getItem('politicas') || '';
+
+    let html = `
+        <div class="cotizacion-resumen">
+            <h3 style="color: #667eea; margin-bottom: 20px; text-align: center;">📊 Resumen de Cotización</h3>
+            
+            <div class="cotizacion-header">
+                <div class="info-box">
+                    <div class="info-label">Cliente</div>
+                    <div class="info-value">${cot.cliente.nombre}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Email</div>
+                    <div class="info-value">${cot.cliente.email}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Teléfono</div>
+                    <div class="info-value">${cot.cliente.telefono}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Estado</div>
+                    <div class="info-value" style="color: ${estadoCotizacion.color}; display: flex; align-items: center; gap: 5px;">
+                        <span>${estadoCotizacion.icono}</span>
+                        <span>${estadoCotizacion.nombre}</span>
+                    </div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Fecha del Evento</div>
+                    <div class="info-value">${cot.cliente.fechaEvento}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Hora</div>
+                    <div class="info-value">${cot.cliente.horaEvento}</div>
+                </div>
+                <div class="info-box">
+                    <div class="info-label">Personas</div>
+                    <div class="info-value">${cot.cliente.cantidadPersonas} (${cot.cliente.formatoEvento})</div>
+                </div>
+            </div>
+
+            ${camposPersonalizadosHtml}
+
+            ${cot.motivos.length > 0 ? `
+                <div style="margin-bottom: 20px;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Motivo del Evento:</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        ${motivosTexto.map(m => `<span style="background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${m}</span>`).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${cot.experiencias.length > 0 ? `
+                <div style="margin-bottom: 20px;">
+                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Experiencias Seleccionadas:</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        ${experienciasTexto.map(e => `<span style="background: #28a745; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${e}</span>`).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            <h4 style="color: #2c3e50; margin-bottom: 15px;">Detalle del Menú:</h4>
+            <div style="overflow-x: auto;">
+                ${(() => {
+                    const categoriasResumen = categorias.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+                    
+                    let tablaHtml = '';
+                    
+                    categoriasResumen.forEach(categoria => {
+                        const productosCategoria = cot.productos.filter(p => p.categoria === categoria.id);
+                        
+                        if (productosCategoria.length > 0) {
+                            const subtotalCategoria = productosCategoria.reduce((sum, p) => sum + p.subtotal, 0);
+                            
+                            tablaHtml += `
+                                <div style="margin-bottom: 25px;">
+                                    <h5 style="color: #667eea; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;">
+                                        ${categoria.icono} ${categoria.nombre} ${ocultarPrecios ? '' : `- Subtotal: $${subtotalCategoria.toFixed(2)}`}
+                                    </h5>
+                                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
+                                        <thead>
+                                            <tr style="background: #f8f9fa;">
+                                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Producto</th>
+                                                ${ocultarPrecios ? '' : '<th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">Precio Unit.</th>'}
+                                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">Cantidad</th>
+                                                ${ocultarPrecios ? '' : '<th style="padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6;">Subtotal</th>'}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${productosCategoria.map(p => `
+                                                <tr>
+                                                    <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                                                        <strong>${p.nombre}</strong>
+                                                        ${p.descripcion ? `<br><small style="color: #6c757d;">${p.descripcion}</small>` : ''}
+                                                    </td>
+                                                    ${ocultarPrecios ? '' : `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">$${p.precio.toFixed(2)}</td>`}
+                                                    <td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">${p.cantidad}</td>
+                                                    ${ocultarPrecios ? '' : `<td style="padding: 12px; text-align: right; border-bottom: 1px solid #dee2e6; font-weight: 600;">$${p.subtotal.toFixed(2)}</td>`}
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            `;
+                        }
+                    });
+                    
+                    return tablaHtml;
+                })()}
+            </div>
+
+            ${!ocultarPrecios ? `
+                <div class="total-section">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                        <div>
+                            <div style="font-size: 0.9rem; opacity: 0.8;">Costo Total</div>
+                            <div style="font-size: 1.5rem; font-weight: 600;">$${cot.totales.costoTotal.toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.9rem; opacity: 0.8;">Margen</div>
+                            <div style="font-size: 1.5rem; font-weight: 600;">$${cot.totales.margenTotal.toFixed(2)} (${cot.totales.porcentajeMargen}%)</div>
+                        </div>
+                    </div>
+                    <div class="total-amount">$${cot.totales.subtotal.toFixed(2)}</div>
+                    <div style="font-size: 1.1rem;">Total de la Cotización</div>
+                </div>
+            ` : ''}
+
+            ${politicas ? `
+                <div class="politicas-section">
+                    <h4 style="color: #2c3e50; margin-bottom: 15px;">📋 Políticas de la Empresa</h4>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
+                        ${politicas}
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="no-print" style="text-align: center; margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                <button class="btn" onclick="descargarCotizacion()">📄 Descargar TXT</button>
+                <button class="btn" onclick="guardarCotizacion()">💾 Guardar Cotización</button>
+                <button class="btn" onclick="toggleVistaPresentacion()" style="background: #17a2b8; color: white;">📋 Vista Presentación</button>
+                <button class="btn" onclick="toggleOcultarPrecios()" style="background: #6c757d; color: white;">🙈 Ocultar Precios</button>
+                <button class="btn" onclick="imprimirResumen()" style="background: #28a745; color: white;">🖨️ Imprimir</button>
+            </div>
+        </div>
+    `;
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+}
+
 // GESTIÓN DE CAMPOS PERSONALIZADOS DEL CLIENTE
 async function cargarCamposPersonalizados() {
     camposPersonalizados = await cargarDatosDesdeAPI('camposPersonalizados');
@@ -925,6 +1584,8 @@ function obtenerPlantillaDefecto() {
 ===============================
 
 Cliente: [cliente]
+Email: [email]
+Teléfono: [telefono]
 Fecha del Evento: [fecha_evento]
 Hora: [hora_evento]
 Cantidad de Personas: [personas] ([formato])
@@ -1017,63 +1678,6 @@ function descargarPrevisualizacion() {
     cerrarModalPrevia();
 }
 
-function procesarPlantilla(plantilla, cotizacion) {
-    const politicas = localStorage.getItem('politicas') || '';
-    
-    const motivosTexto = cotizacion.motivos && cotizacion.motivos.length > 0 
-        ? 'Motivo del Evento:\n' + cotizacion.motivos.map(id => {
-            const motivo = motivosEvento.find(m => m.id === id);
-            return motivo ? `- ${motivo.icono} ${motivo.nombre}` : `- ${id}`;
-        }).join('\n')
-        : '';
-    
-    const experienciasTexto = cotizacion.experiencias && cotizacion.experiencias.length > 0 
-        ? 'Experiencias Seleccionadas:\n' + cotizacion.experiencias.map(id => {
-            const experiencia = experiencias.find(e => e.id === id);
-            return experiencia ? `- ${experiencia.icono} ${experiencia.nombre}` : `- ${id}`;
-        }).join('\n')
-        : '';
-    
-    const productosTexto = cotizacion.productos && cotizacion.productos.length > 0
-        ? cotizacion.productos.map(p => 
-            `${p.nombre}\n  Precio unitario: $${p.precio.toFixed(2)}\n  Cantidad: ${p.cantidad}\n  Subtotal: $${p.subtotal.toFixed(2)}`
-        ).join('\n\n')
-        : 'No hay productos seleccionados';
-    
-    const estadoCotizacion = estadosCotizacion.find(est => est.id === cotizacion.estado) || { nombre: 'Sin estado', icono: '❓' };
-    const estadoTexto = `${estadoCotizacion.icono} ${estadoCotizacion.nombre}`;
-    
-    let contenido = plantilla;
-    
-    // Reemplazar variables básicas
-    contenido = contenido.replace(/\[cliente\]/g, cotizacion.cliente?.nombre || '');
-    contenido = contenido.replace(/\[fecha_evento\]/g, cotizacion.cliente?.fechaEvento || '');
-    contenido = contenido.replace(/\[hora_evento\]/g, cotizacion.cliente?.horaEvento || '');
-    contenido = contenido.replace(/\[personas\]/g, cotizacion.cliente?.cantidadPersonas || '');
-    contenido = contenido.replace(/\[formato\]/g, cotizacion.cliente?.formatoEvento || '');
-    contenido = contenido.replace(/\[estado\]/g, estadoTexto);
-    contenido = contenido.replace(/\[motivos\]/g, motivosTexto);
-    contenido = contenido.replace(/\[experiencias\]/g, experienciasTexto);
-    contenido = contenido.replace(/\[productos\]/g, productosTexto);
-    contenido = contenido.replace(/\[total\]/g, cotizacion.totales?.subtotal?.toFixed(2) || '0.00');
-    contenido = contenido.replace(/\[costo_total\]/g, cotizacion.totales?.costoTotal?.toFixed(2) || '0.00');
-    contenido = contenido.replace(/\[margen\]/g, cotizacion.totales?.margenTotal?.toFixed(2) || '0.00');
-    contenido = contenido.replace(/\[porcentaje_margen\]/g, cotizacion.totales?.porcentajeMargen || '0');
-    contenido = contenido.replace(/\[fecha_cotizacion\]/g, cotizacion.fechaCotizacion || '');
-    contenido = contenido.replace(/\[politicas\]/g, politicas);
-    
-    // Reemplazar variables de campos personalizados
-    if (cotizacion.camposPersonalizados) {
-        camposPersonalizados.forEach(campo => {
-            const valor = cotizacion.camposPersonalizados[campo.id] || '';
-            const regex = new RegExp(`\\[${campo.id}\\]`, 'g');
-            contenido = contenido.replace(regex, valor);
-        });
-    }
-    
-    return contenido;
-}
-
 // FUNCIONES DE VISTA DE PRESENTACIÓN
 function toggleVistaPresentacion() {
     vistaPresentacion = !vistaPresentacion;
@@ -1128,200 +1732,6 @@ function imprimirResumen() {
             }
         }, 1000);
     }
-}
-
-// Función para actualizar el resumen en tiempo real
-function actualizarResumenTiempoReal() {
-    const nombreCliente = document.getElementById('nombreCliente').value.trim();
-    const fechaEvento = document.getElementById('fechaEvento').value;
-    const cantidadPersonas = parseInt(document.getElementById('cantidadPersonas').value);
-    const formatoEvento = document.getElementById('formatoEvento').value;
-    const estadoSeleccionado = document.getElementById('estadoCotizacion').value;
-
-    if (!nombreCliente || !fechaEvento || !cantidadPersonas) {
-        document.getElementById('resumenCotizacion').style.display = 'none';
-        return;
-    }
-
-    const motivosSeleccionados = Array.from(document.querySelectorAll('input[name="motivo"]:checked')).map(cb => cb.value);
-    const experienciasSeleccionadas = Array.from(document.querySelectorAll('input[name="experiencia"]:checked')).map(cb => cb.value);
-    const valoresCamposPersonalizados = obtenerValoresCamposPersonalizados();
-
-    const productosSeleccionados = [];
-    
-    productos.forEach(producto => {
-        const checkbox = document.getElementById(`producto_${producto.id}`);
-        const cantidadInput = document.getElementById(`cantidad_${producto.id}`);
-        
-        if (checkbox && checkbox.checked && cantidadInput) {
-            const cantidad = parseInt(cantidadInput.value) || 0;
-            if (cantidad > 0) {
-                productosSeleccionados.push({
-                    ...producto,
-                    cantidad: cantidad,
-                    subtotal: producto.precio * cantidad
-                });
-            }
-        }
-    });
-
-    if (productosSeleccionados.length === 0) {
-        mostrarResumenVacio(nombreCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados);
-        return;
-    }
-
-    const subtotalProductos = productosSeleccionados.reduce((sum, p) => sum + p.subtotal, 0);
-    const costoTotal = productosSeleccionados.reduce((sum, p) => sum + (p.costo * p.cantidad), 0);
-    const margenTotal = subtotalProductos - costoTotal;
-
-    let cotizacionId;
-    if (editandoCotizacion && cotizacionOriginalEnEdicion) {
-        cotizacionId = cotizacionOriginalEnEdicion.id;
-    } else {
-        cotizacionId = Date.now();
-    }
-
-    cotizacionActual = {
-        id: cotizacionId,
-        fechaCotizacion: new Date().toLocaleDateString(),
-        estado: estadoSeleccionado,
-        cliente: {
-            nombre: nombreCliente,
-            fechaEvento: new Date(fechaEvento).toLocaleDateString(),
-            horaEvento: new Date(fechaEvento).toLocaleTimeString(),
-            fechaEventoOriginal: fechaEvento,
-            cantidadPersonas,
-            formatoEvento
-        },
-        motivos: motivosSeleccionados,
-        experiencias: experienciasSeleccionadas,
-        productos: productosSeleccionados,
-        camposPersonalizados: valoresCamposPersonalizados,
-        totales: {
-            subtotal: subtotalProductos,
-            costoTotal,
-            margenTotal,
-            porcentajeMargen: costoTotal > 0 ? ((margenTotal / costoTotal) * 100).toFixed(1) : 0
-        }
-    };
-
-    mostrarResumenCotizacion();
-}
-
-function mostrarResumenVacio(nombreCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados) {
-    const container = document.getElementById('resumenCotizacion');
-    const estadoCotizacion = estadosCotizacion.find(est => est.id === estadoSeleccionado) || estadosCotizacion[0];
-
-    const motivosTexto = motivosSeleccionados.map(id => {
-        const motivo = motivosEvento.find(m => m.id === id);
-        return motivo ? `${motivo.icono} ${motivo.nombre}` : id;
-    });
-
-    const experienciasTexto = experienciasSeleccionadas.map(id => {
-        const experiencia = experiencias.find(e => e.id === id);
-        return experiencia ? `${experiencia.icono} ${experiencia.nombre}` : id;
-    });
-
-    let camposPersonalizadosHtml = '';
-    if (camposPersonalizados.length > 0 && Object.keys(valoresCamposPersonalizados).some(key => valoresCamposPersonalizados[key])) {
-        camposPersonalizadosHtml = `
-            <div style="margin-bottom: 20px;">
-                <h4 style="color: #2c3e50; margin-bottom: 10px;">📋 Información Adicional:</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                    ${camposPersonalizados.map(campo => {
-                        const valor = valoresCamposPersonalizados[campo.id];
-                        if (valor) {
-                            return `
-                                <div style="background: white; padding: 10px; border-radius: 8px; border-left: 3px solid #17a2b8;">
-                                    <div style="font-size: 0.9rem; color: #6c757d;">${campo.nombre}</div>
-                                    <div style="font-weight: 600; color: #2c3e50;">${valor}</div>
-                                </div>
-                            `;
-                        }
-                        return '';
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-    const politicas = localStorage.getItem('politicas') || '';
-
-    let html = `
-        <div class="cotizacion-resumen">
-            <h3 style="color: #667eea; margin-bottom: 20px; text-align: center;">📊 Vista Previa de Cotización</h3>
-            
-            <div class="cotizacion-header">
-                <div class="info-box">
-                    <div class="info-label">Cliente</div>
-                    <div class="info-value">${nombreCliente}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Estado</div>
-                    <div class="info-value" style="color: ${estadoCotizacion.color}; display: flex; align-items: center; gap: 5px;">
-                        <span>${estadoCotizacion.icono}</span>
-                        <span>${estadoCotizacion.nombre}</span>
-                    </div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Fecha del Evento</div>
-                    <div class="info-value">${new Date(fechaEvento).toLocaleDateString()}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Hora</div>
-                    <div class="info-value">${new Date(fechaEvento).toLocaleTimeString()}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Personas</div>
-                    <div class="info-value">${cantidadPersonas} (${formatoEvento})</div>
-                </div>
-            </div>
-
-            ${camposPersonalizadosHtml}
-
-            ${motivosSeleccionados.length > 0 ? `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Motivo del Evento:</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${motivosTexto.map(m => `<span style="background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${m}</span>`).join('')}
-                    </div>
-                </div>
-            ` : ''}
-
-            ${experienciasSeleccionadas.length > 0 ? `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Experiencias Seleccionadas:</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${experienciasTexto.map(e => `<span style="background: #28a745; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${e}</span>`).join('')}
-                    </div>
-                </div>
-            ` : ''}
-
-            <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 15px; margin: 20px 0;">
-                <div style="font-size: 3rem; margin-bottom: 15px;">🍽️</div>
-                <h4 style="color: #6c757d; margin-bottom: 10px;">No hay productos seleccionados</h4>
-                <p style="color: #6c757d;">Selecciona productos del menú para ver el detalle y total de la cotización</p>
-            </div>
-
-            ${politicas ? `
-                <div class="politicas-section">
-                    <h4 style="color: #2c3e50; margin-bottom: 15px;">📋 Políticas de la Empresa</h4>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
-                        ${politicas}
-                    </div>
-                </div>
-            ` : ''}
-
-            <div class="no-print" style="text-align: center; margin-top: 20px;">
-                <button class="btn" onclick="descargarCotizacion()" disabled style="opacity: 0.5;">📄 Descargar TXT</button>
-                <button class="btn" onclick="guardarCotizacion()" disabled style="opacity: 0.5;">💾 Guardar Cotización</button>
-                <div style="margin-top: 10px; font-size: 0.9rem; color: #6c757d;">Agrega productos para habilitar las acciones</div>
-            </div>
-        </div>
-    `;
-
-    container.innerHTML = html;
-    container.style.display = 'block';
 }
 
 // Gestión de tabs
@@ -2323,253 +2733,6 @@ function validarTotalesProductos() {
     return !hayErrores;
 }
 
-function mostrarResumenCotizacion() {
-    const container = document.getElementById('resumenCotizacion');
-    const cot = cotizacionActual;
-
-    const motivosTexto = cot.motivos.map(id => {
-        const motivo = motivosEvento.find(m => m.id === id);
-        return motivo ? `${motivo.icono} ${motivo.nombre}` : id;
-    });
-
-    const experienciasTexto = cot.experiencias.map(id => {
-        const experiencia = experiencias.find(e => e.id === id);
-        return experiencia ? `${experiencia.icono} ${experiencia.nombre}` : id;
-    });
-
-    const estadoCotizacion = estadosCotizacion.find(est => est.id === cot.estado) || estadosCotizacion[0];
-
-    let camposPersonalizadosHtml = '';
-    if (camposPersonalizados.length > 0 && cot.camposPersonalizados && Object.keys(cot.camposPersonalizados).some(key => cot.camposPersonalizados[key])) {
-        camposPersonalizadosHtml = `
-            <div style="margin-bottom: 20px;">
-                <h4 style="color: #2c3e50; margin-bottom: 10px;">📋 Información Adicional:</h4>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                    ${camposPersonalizados.map(campo => {
-                        const valor = cot.camposPersonalizados[campo.id];
-                        if (valor) {
-                            return `
-                                <div style="background: white; padding: 10px; border-radius: 8px; border-left: 3px solid #17a2b8;">
-                                    <div style="font-size: 0.9rem; color: #6c757d;">${campo.nombre}</div>
-                                    <div style="font-weight: 600; color: #2c3e50;">${valor}</div>
-                                </div>
-                            `;
-                        }
-                        return '';
-                    }).join('')}
-                </div>
-            </div>
-        `;
-    }
-
-    const politicas = localStorage.getItem('politicas') || '';
-
-    let html = `
-        <div class="cotizacion-resumen">
-            <h3 style="color: #667eea; margin-bottom: 20px; text-align: center;">📊 Resumen de Cotización</h3>
-            
-            <div class="cotizacion-header">
-                <div class="info-box">
-                    <div class="info-label">Cliente</div>
-                    <div class="info-value">${cot.cliente.nombre}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Estado</div>
-                    <div class="info-value" style="color: ${estadoCotizacion.color}; display: flex; align-items: center; gap: 5px;">
-                        <span>${estadoCotizacion.icono}</span>
-                        <span>${estadoCotizacion.nombre}</span>
-                    </div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Fecha del Evento</div>
-                    <div class="info-value">${cot.cliente.fechaEvento}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Hora</div>
-                    <div class="info-value">${cot.cliente.horaEvento}</div>
-                </div>
-                <div class="info-box">
-                    <div class="info-label">Personas</div>
-                    <div class="info-value">${cot.cliente.cantidadPersonas} (${cot.cliente.formatoEvento})</div>
-                </div>
-            </div>
-
-            ${camposPersonalizadosHtml}
-
-            ${cot.motivos.length > 0 ? `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Motivo del Evento:</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${motivosTexto.map(m => `<span style="background: #667eea; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${m}</span>`).join('')}
-                    </div>
-                </div>
-            ` : ''}
-
-            ${cot.experiencias.length > 0 ? `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: #2c3e50; margin-bottom: 10px;">Experiencias Seleccionadas:</h4>
-                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                        ${experienciasTexto.map(e => `<span style="background: #28a745; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem;">${e}</span>`).join('')}
-                    </div>
-                </div>
-            ` : ''}
-
-            <h4 style="color: #2c3e50; margin-bottom: 15px;">Detalle del Menú:</h4>
-            <div style="overflow-x: auto;">
-                ${(() => {
-                    const categoriasResumen = categorias.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
-                    
-                    let tablaHtml = '';
-                    
-                    categoriasResumen.forEach(categoria => {
-                        const productosCategoria = cot.productos.filter(p => p.categoria === categoria.id);
-                        
-                        if (productosCategoria.length > 0) {
-                            const subtotalCategoria = productosCategoria.reduce((sum, p) => sum + p.subtotal, 0);
-                            
-                            tablaHtml += `
-                                <div style="margin-bottom: 25px;">
-                                    <h5 style="color: #667eea; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #667eea;">
-                                        ${categoria.icono} ${categoria.nombre} ${ocultarPrecios ? '' : `- Subtotal: $${subtotalCategoria.toFixed(2)}`}
-                                    </h5>
-                                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden;">
-                                        <thead>
-                                            <tr style="background: #f8f9fa;">
-                                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6;">Producto</th>
-                                                ${ocultarPrecios ? '' : '<th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">Precio Unit.</th>'}
-                                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid #dee2e6;">Cantidad</th>
-                                                ${ocultarPrecios ? '' : '<th style="padding: 12px; text-align: right; border-bottom: 2px solid #dee2e6;">Subtotal</th>'}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${productosCategoria.map(p => `
-                                                <tr>
-                                                    <td style="padding: 12px; border-bottom: 1px solid #dee2e6;">
-                                                        <strong>${p.nombre}</strong>
-                                                        ${p.descripcion ? `<br><small style="color: #6c757d;">${p.descripcion}</small>` : ''}
-                                                    </td>
-                                                    ${ocultarPrecios ? '' : `<td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">$${p.precio.toFixed(2)}</td>`}
-                                                    <td style="padding: 12px; text-align: center; border-bottom: 1px solid #dee2e6;">${p.cantidad}</td>
-                                                    ${ocultarPrecios ? '' : `<td style="padding: 12px; text-align: right; border-bottom: 1px solid #dee2e6; font-weight: 600;">$${p.subtotal.toFixed(2)}</td>`}
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            `;
-                        }
-                    });
-                    
-                    return tablaHtml;
-                })()}
-            </div>
-
-            ${!ocultarPrecios ? `
-                <div class="total-section">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
-                        <div>
-                            <div style="font-size: 0.9rem; opacity: 0.8;">Costo Total</div>
-                            <div style="font-size: 1.5rem; font-weight: 600;">$${cot.totales.costoTotal.toFixed(2)}</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.9rem; opacity: 0.8;">Margen</div>
-                            <div style="font-size: 1.5rem; font-weight: 600;">$${cot.totales.margenTotal.toFixed(2)} (${cot.totales.porcentajeMargen}%)</div>
-                        </div>
-                    </div>
-                    <div class="total-amount">$${cot.totales.subtotal.toFixed(2)}</div>
-                    <div style="font-size: 1.1rem;">Total de la Cotización</div>
-                </div>
-            ` : ''}
-
-            ${politicas ? `
-                <div class="politicas-section">
-                    <h4 style="color: #2c3e50; margin-bottom: 15px;">📋 Políticas de la Empresa</h4>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #dc3545;">
-                        ${politicas}
-                    </div>
-                </div>
-            ` : ''}
-
-            <div class="no-print" style="text-align: center; margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
-                <button class="btn" onclick="descargarCotizacion()">📄 Descargar TXT</button>
-                <button class="btn" onclick="guardarCotizacion()">💾 Guardar Cotización</button>
-                <button class="btn" onclick="toggleVistaPresentacion()" style="background: #17a2b8; color: white;">📋 Vista Presentación</button>
-                <button class="btn" onclick="toggleOcultarPrecios()" style="background: #6c757d; color: white;">🙈 Ocultar Precios</button>
-                <button class="btn" onclick="imprimirResumen()" style="background: #28a745; color: white;">🖨️ Imprimir</button>
-            </div>
-        </div>
-    `;
-
-    container.innerHTML = html;
-    container.style.display = 'block';
-}
-
-function limpiarCotizacion(sinConfirmacion = false) {
-    if (!sinConfirmacion && !confirm('¿Estás seguro de limpiar el formulario? Se perderán todos los datos ingresados.')) {
-        return;
-    }
-    
-    document.getElementById('nombreCliente').value = '';
-    document.getElementById('fechaEvento').value = '';
-    document.getElementById('cantidadPersonas').value = '';
-    document.getElementById('formatoEvento').value = 'sentado';
-    
-    const estadosOrdenados = estadosCotizacion.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
-    if (estadosOrdenados.length > 0 && document.getElementById('estadoCotizacion')) {
-        document.getElementById('estadoCotizacion').value = estadosOrdenados[0].id;
-    }
-
-    camposPersonalizados.forEach(campo => {
-        const elemento = document.getElementById(`campo_${campo.id}`);
-        if (elemento) {
-            if (campo.tipo === 'checkbox') {
-                elemento.checked = false;
-            } else {
-                elemento.value = '';
-            }
-        }
-    });
-
-    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        cb.checked = false;
-        cb.closest('.checkbox-item')?.classList.remove('selected');
-    });
-
-    document.querySelectorAll('input[id^="producto_"]').forEach(checkbox => {
-        checkbox.checked = false;
-        const productoId = checkbox.value;
-        const cantidadInput = document.getElementById(`cantidad_${productoId}`);
-        const subtotalDiv = document.getElementById(`subtotal_${productoId}`);
-        
-        if (cantidadInput) {
-            cantidadInput.disabled = true;
-            cantidadInput.value = 1;
-            cantidadInput.max = '';
-        }
-        if (subtotalDiv) {
-            subtotalDiv.textContent = ocultarPrecios ? 'Oculto' : '$0.00';
-        }
-    });
-
-    const resumenValidacion = document.getElementById('resumenValidacion');
-    if (resumenValidacion) {
-        resumenValidacion.remove();
-    }
-
-    document.getElementById('resumenCotizacion').style.display = 'none';
-    
-    if (editandoCotizacion) {
-        salirModoEdicion();
-    }
-    
-    vistaPresentacion = false;
-    ocultarPrecios = false;
-    
-    if (!sinConfirmacion) {
-        mostrarAlerta('alertCotizacion', 'Formulario limpiado.', 'success');
-    }
-}
-
 function guardarCotizacion() {
     if (!cotizacionActual.id) {
         mostrarAlerta('alertCotizacion', 'No hay cotización para guardar. Completa los datos básicos del cliente.', 'error');
@@ -2639,19 +2802,6 @@ function guardarCotizacion() {
     };
     
     guardarEnAPI();
-}
-
-function agregarEventosActualizacion() {
-    const campos = ['nombreCliente', 'fechaEvento', 'cantidadPersonas', 'formatoEvento', 'estadoCotizacion'];
-    campos.forEach(campoId => {
-        const elemento = document.getElementById(campoId);
-        if (elemento) {
-            elemento.addEventListener('input', actualizarResumenTiempoReal);
-            elemento.addEventListener('change', actualizarResumenTiempoReal);
-        }
-    });
-    
-    document.getElementById('tipoCampo').addEventListener('change', toggleOpcionesDesplegable);
 }
 
 function entrarModoEdicion(cotizacionOriginal) {
@@ -2896,6 +3046,12 @@ function verDetalleCotizacion(index) {
                             <strong>Cliente:</strong><br>${cot.cliente.nombre}
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Email:</strong><br>${cot.cliente.email || 'No especificado'}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Teléfono:</strong><br>${cot.cliente.telefono || 'No especificado'}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
                             <strong>Fecha:</strong><br>${cot.cliente.fechaEvento} ${cot.cliente.horaEvento}
                         </div>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
@@ -2955,104 +3111,6 @@ function cerrarModal() {
     if (modal) {
         modal.remove();
     }
-}
-
-function editarCotizacion(index) {
-    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
-        const cot = cotizaciones[index];
-        
-        if (!cot) return;
-
-        showTab('cotizador');
-        
-        limpiarCotizacion(true);
-        
-        setTimeout(() => {
-            document.getElementById('nombreCliente').value = cot.cliente.nombre;
-            document.getElementById('cantidadPersonas').value = cot.cliente.cantidadPersonas;
-            document.getElementById('formatoEvento').value = cot.cliente.formatoEvento;
-            
-            if (cot.estado && document.getElementById('estadoCotizacion')) {
-                document.getElementById('estadoCotizacion').value = cot.estado;
-            }
-            
-            if (cot.cliente.fechaEventoOriginal) {
-                document.getElementById('fechaEvento').value = cot.cliente.fechaEventoOriginal;
-            } else {
-                try {
-                    const fechaParts = cot.cliente.fechaEvento.split('/');
-                    const horaParts = cot.cliente.horaEvento.split(':');
-                    
-                    if (fechaParts.length === 3 && horaParts.length >= 2) {
-                        const dia = fechaParts[0].padStart(2, '0');
-                        const mes = fechaParts[1].padStart(2, '0');
-                        const año = fechaParts[2];
-                        const hora = horaParts[0].padStart(2, '0');
-                        const minuto = horaParts[1].padStart(2, '0');
-                        
-                        const fechaISO = `${año}-${mes}-${dia}T${hora}:${minuto}`;
-                        document.getElementById('fechaEvento').value = fechaISO;
-                    }
-                } catch (error) {
-                    console.warn('Error al convertir fecha:', error);
-                }
-            }
-
-            if (cot.camposPersonalizados) {
-                cargarValoresCamposPersonalizados(cot.camposPersonalizados);
-            }
-
-            document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.checked = false;
-                cb.closest('.checkbox-item')?.classList.remove('selected');
-            });
-
-            if (cot.motivos && cot.motivos.length > 0) {
-                cot.motivos.forEach(motivo => {
-                    const checkbox = document.querySelector(`input[name="motivo"][value="${motivo}"]`);
-                    if (checkbox) {
-                        checkbox.checked = true;
-                        checkbox.closest('.checkbox-item')?.classList.add('selected');
-                    }
-                });
-            }
-
-            if (cot.experiencias && cot.experiencias.length > 0) {
-                cot.experiencias.forEach(experiencia => {
-                    const checkbox = document.querySelector(`input[name="experiencia"][value="${experiencia}"]`);
-                    if (checkbox) {
-                        checkbox.checked = true;
-                        checkbox.closest('.checkbox-item')?.classList.add('selected');
-                    }
-                });
-            }
-
-            setTimeout(() => {
-                if (cot.productos && cot.productos.length > 0) {
-                    cot.productos.forEach(prod => {
-                        const checkbox = document.getElementById(`producto_${prod.id}`);
-                        const cantidadInput = document.getElementById(`cantidad_${prod.id}`);
-                        
-                        if (checkbox && cantidadInput) {
-                            checkbox.checked = true;
-                            cantidadInput.disabled = false;
-                            cantidadInput.value = prod.cantidad;
-                            calcularTotalProducto(prod.id);
-                        } else {
-                            console.warn(`Producto con ID ${prod.id} no encontrado - posiblemente fue eliminado`);
-                        }
-                    });
-                }
-
-                validarTotalesProductos();
-                actualizarResumenTiempoReal();
-            }, 200);
-        }, 200);
-
-        entrarModoEdicion(cot);
-        
-        mostrarAlerta('alertCotizacion', 'Cotización cargada para edición. Al guardar se creará una nueva versión.', 'success');
-    });
 }
 
 function duplicarCotizacion(index) {
@@ -3116,6 +3174,8 @@ function exportarCotizaciones() {
             contenido += `COTIZACIÓN #${index + 1}\n`;
             contenido += `================\n`;
             contenido += `Cliente: ${cot.cliente.nombre}\n`;
+            contenido += `Email: ${cot.cliente.email || 'No especificado'}\n`;
+            contenido += `Teléfono: ${cot.cliente.telefono || 'No especificado'}\n`;
             contenido += `Fecha del Evento: ${cot.cliente.fechaEvento} ${cot.cliente.horaEvento}\n`;
             contenido += `Personas: ${cot.cliente.cantidadPersonas} (${cot.cliente.formatoEvento})\n`;
             contenido += `Total: $${cot.totales.subtotal.toFixed(2)}\n`;
@@ -3300,52 +3360,6 @@ function importarBaseDatos() {
     input.click();
 }
 
-// Inicializar la aplicación
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Inicializando aplicación del cotizador...');
-    
-    // Función asíncrona para inicializar datos
-    const inicializarDatos = async () => {
-        try {
-            await cargarCategorias();
-            await cargarEstados();
-            await cargarExperiencias();
-            await cargarMotivos();
-            await cargarCamposPersonalizados();
-            await cargarPoliticas();
-            await cargarPlantilla();
-            await cargarProductos();
-            
-            // Actualizar interfaces después de cargar datos
-            actualizarSelectCategorias();
-            actualizarSelectEstados();
-            actualizarListaCategorias();
-            actualizarListaEstados();
-            actualizarListaExperiencias();
-            actualizarListaMotivos();
-            actualizarListaCamposPersonalizados();
-            actualizarListaProductos();
-            actualizarMenuSelector();
-            actualizarExperienciasCheckboxes();
-            actualizarMotivosCheckboxes();
-            generarCamposPersonalizadosEnCotizador();
-            actualizarVariablesCamposPersonalizados();
-            cargarHistorialCotizaciones();
-            
-            // Agregar eventos para actualización en tiempo real
-            agregarEventosActualizacion();
-            
-            console.log('Aplicación inicializada correctamente');
-        } catch (error) {
-            console.error('Error inicializando aplicación:', error);
-        }
-    };
-    
-    // Ejecutar inicialización
-    inicializarDatos();
-});
-
-
 // Función para convertir solicitud pública a cotización normal
 function convertirASolicitudNormal(index) {
     cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
@@ -3432,7 +3446,50 @@ function contarSolicitudesPendientes() {
     });
 }
 
-// Llamar esta función al cargar la página para mostrar solicitudes pendientes
+// Inicializar la aplicación
 document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(contarSolicitudesPendientes, 1000);
+    console.log('Inicializando aplicación del cotizador...');
+    
+    // Función asíncrona para inicializar datos
+    const inicializarDatos = async () => {
+        try {
+            await cargarCategorias();
+            await cargarEstados();
+            await cargarExperiencias();
+            await cargarMotivos();
+            await cargarCamposPersonalizados();
+            await cargarPoliticas();
+            await cargarPlantilla();
+            await cargarProductos();
+            
+            // Actualizar interfaces después de cargar datos
+            actualizarSelectCategorias();
+            actualizarSelectEstados();
+            actualizarListaCategorias();
+            actualizarListaEstados();
+            actualizarListaExperiencias();
+            actualizarListaMotivos();
+            actualizarListaCamposPersonalizados();
+            actualizarListaProductos();
+            actualizarMenuSelector();
+            actualizarExperienciasCheckboxes();
+            actualizarMotivosCheckboxes();
+            generarCamposPersonalizadosEnCotizador();
+            actualizarVariablesCamposPersonalizados();
+            cargarHistorialCotizaciones();
+            
+            // Agregar eventos para actualización en tiempo real
+            agregarEventosActualizacion();
+            
+            // Contar solicitudes pendientes
+            setTimeout(contarSolicitudesPendientes, 1000);
+            
+            console.log('Aplicación inicializada correctamente');
+        } catch (error) {
+            console.error('Error inicializando aplicación:', error);
+        }
+    };
+    
+    // Ejecutar inicialización
+    inicializarDatos();
 });
