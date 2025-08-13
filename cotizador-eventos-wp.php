@@ -26,6 +26,7 @@ class CotizadorEventosWP {
         
         add_action('init', array($this, 'init_plugin'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_assets'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_assets'));
         add_action('rest_api_init', array($this, 'register_rest_routes'));
         add_action('template_redirect', array($this, 'handle_app_route'));
         add_shortcode('cotizador_publico', array($this, 'shortcode_cotizador_publico'));
@@ -58,11 +59,6 @@ class CotizadorEventosWP {
         // Agregar reglas de reescritura
         add_rewrite_rule('^app/?$', 'index.php?cotizador_eventos_app=1', 'top');
         flush_rewrite_rules();
-        
-        // Crear datos iniciales si el usuario admin no tiene
-        if (is_user_logged_in()) {
-            $this->create_initial_user_data();
-        }
     }
     
     /**
@@ -102,6 +98,9 @@ class CotizadorEventosWP {
                 exit;
             }
             
+            // Crear datos iniciales si es necesario
+            $this->create_initial_user_data();
+            
             // Cargar la plantilla de la app
             $this->load_app_template();
             exit;
@@ -136,7 +135,7 @@ class CotizadorEventosWP {
         global $post;
         
         // Cargar assets para la ruta /app
-        if (get_query_var('cotizador_eventos_app')) {
+        if (get_query_var('cotizador_eventos_app') && is_user_logged_in()) {
             // CSS - usando exactamente los mismos estilos del original
             wp_enqueue_style(
                 'cotizador-eventos-styles', 
@@ -160,6 +159,7 @@ class CotizadorEventosWP {
                 'nonce' => wp_create_nonce('wp_rest'),
                 'currentUserId' => get_current_user_id(),
                 'pluginUrl' => COTIZADOR_EVENTOS_PLUGIN_URL,
+                'isAdmin' => true,
             ));
         }
         
@@ -187,6 +187,7 @@ class CotizadorEventosWP {
                 'restUrl' => rest_url('cotizador-eventos/v1/'),
                 'nonce' => wp_create_nonce('wp_rest'),
                 'pluginUrl' => COTIZADOR_EVENTOS_PLUGIN_URL,
+                'isAdmin' => false,
             ));
         }
     }
@@ -224,6 +225,19 @@ class CotizadorEventosWP {
             ),
         ));
         
+        // Eliminar datos del usuario
+        register_rest_route('cotizador-eventos/v1', '/data/(?P<type>[a-zA-Z0-9_-]+)', array(
+            'methods' => 'DELETE',
+            'callback' => array($this, 'delete_user_data'),
+            'permission_callback' => array($this, 'check_user_permission'),
+            'args' => array(
+                'type' => array(
+                    'required' => true,
+                    'type' => 'string',
+                ),
+            ),
+        ));
+        
         // Ruta especial para solicitudes públicas (sin autenticación)
         register_rest_route('cotizador-eventos/v1', '/solicitud-publica', array(
             'methods' => 'POST',
@@ -236,11 +250,11 @@ class CotizadorEventosWP {
             ),
         ));
         
-        // Eliminar datos del usuario
-        register_rest_route('cotizador-eventos/v1', '/data/(?P<type>[a-zA-Z0-9_-]+)', array(
-            'methods' => 'DELETE',
-            'callback' => array($this, 'delete_user_data'),
-            'permission_callback' => array($this, 'check_user_permission'),
+        // Ruta para obtener datos públicos (productos, categorías, etc. para el cotizador público)
+        register_rest_route('cotizador-eventos/v1', '/public-data/(?P<type>[a-zA-Z0-9_-]+)', array(
+            'methods' => 'GET',
+            'callback' => array($this, 'get_public_data'),
+            'permission_callback' => '__return_true', // Permitir acceso público
             'args' => array(
                 'type' => array(
                     'required' => true,
@@ -261,60 +275,93 @@ class CotizadorEventosWP {
      * Obtener datos del usuario
      */
     public function get_user_data($request) {
+        global $wpdb;
         
-        r_id = get_current_user_id();
-        a_type = $request['type'];
+        $user_id = get_current_user_id();
+        $data_type = $request['type'];
         
-        le_name = $wpdb->prefix . 'cotizador_eventos_data';
-        ult = $wpdb->get_var($wpdb->prepare(
-         = %s",
-        asult) {
-            rn rest_ensure_response(json_decode($result, true));
+        $table_name = $wpdb->prefix . 'cotizador_eventos_data';
+        
+        $result = $wpdb->get_var($wpdb->prepare(
+            "SELECT data_content FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            $data_type
+        ));
+        
+        if ($result) {
+            return rest_ensure_response(json_decode($result, true));
         }
         
-        etornar datos por defecto si no existen
-        rn rest_ensure_response($this->get_default_data($data_type));
-    }reul
-    tursenur_esponse(jsonecoe($reul, tue)
-        }
-     /**
-//Roardatosp efct sinxitn
-       rturnres_ensure_respne(thisget_defaudt$da_ype
+        // Retornar datos por defecto si no existen
+        return rest_ensure_response($this->get_default_data($data_type));
     }
- * G
-uard/**r datos del usuario
-  */*Guardardatosdelusuario
- publ*/
-ic fpubluc nunctioncsave_user_datatioequn ve_user_data($request) {
-global $gl;bl$wpb
-       
-$u_idget_currentuserid(;
-        $data_type$=u$request['type'];
-ser_id =$data =g$etqcnt_['']
-    $date = $request['type'];
-        $table_name$=d$wpdb->prefixa.t'cotizador_eventos_data'; = $request['data'];
+    
+    /**
+     * Obtener datos públicos (para el cotizador público)
+     */
+    public function get_public_data($request) {
+        global $wpdb;
         
-        le_Va ific $w>zayar_events_data';
-        $xi = wpdbvrwpb->rpare(
-        // V"SELECT id FROM $table_name WHERE user_id = %d ANDedati_syppe=a%s",($wpdb->prepare(
-          ln$WHEREi ,
-         _d= daDa_typt
-        pe = %s",
+        $data_type = $request['type'];
+        $table_name = $wpdb->prefix . 'cotizador_eventos_data';
         
-      i$datacntn =js_cd$d
-           $data_type
-        if ($exists) {    
-          //Actlzar
-            $res/lAa= $wpdb->p(
+        // Buscar datos de cualquier usuario admin (user_id != 0)
+        // Tomamos los datos del primer usuario que los tenga
+        $result = $wpdb->get_var($wpdb->prepare(
+            "SELECT data_content FROM $table_name WHERE user_id != 0 AND data_type = %s ORDER BY id ASC LIMIT 1",
+            $data_type
+        ));
+        
+        if ($result) {
+            $data = json_decode($result, true);
+            
+            // Para productos, remover precios y costos
+            if ($data_type === 'productos' && is_array($data)) {
+                foreach ($data as &$producto) {
+                    unset($producto['precio']);
+                    unset($producto['costo']);
+                }
+            }
+            
+            return rest_ensure_response($data);
+        }
+        
+        // Retornar datos por defecto si no existen
+        return rest_ensure_response($this->get_default_data($data_type));
+    }
+    
+    /**
+     * Guardar datos del usuario
+     */
+    public function save_user_data($request) {
+        global $wpdb;
+        
+        $user_id = get_current_user_id();
+        $data_type = $request['type'];
+        $data = $request['data'];
+        
+        $table_name = $wpdb->prefix . 'cotizador_eventos_data';
+        $data_content = json_encode($data);
+        
+        // Verificar si ya existe
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            $data_type
+        ));
+        
+        if ($exists) {
+            // Actualizar
+            $result = $wpdb->update(
                 $table_name,
-     a          array('data_content' => $data_content),    array('data_content' => $data_content),
-                array('   arra'y(>'$iuser_i, ';'>$da
-      } el)
-        } else {// Insertar
-            $reInsuwer
-             resul name,er(
-             ,
-              rry(
+                array('data_content' => $data_content),
+                array('user_id' => $user_id, 'data_type' => $data_type)
+            );
+        } else {
+            // Insertar
+            $result = $wpdb->insert(
+                $table_name,
+                array(
                     'user_id' => $user_id,
                     'data_type' => $data_type,
                     'data_content' => $data_content
@@ -354,6 +401,9 @@ ser_id =$data =g$etqcnt_['']
         );
         
         if ($result !== false) {
+            // Opcional: Enviar email de notificación al administrador
+            $this->notify_admin_new_request($data);
+            
             return rest_ensure_response(array(
                 'success' => true,
                 'message' => 'Solicitud enviada correctamente'
@@ -384,6 +434,39 @@ ser_id =$data =g$etqcnt_['']
         }
         
         return new WP_Error('delete_failed', 'Error al eliminar datos', array('status' => 500));
+    }
+    
+    /**
+     * Notificar al administrador sobre nueva solicitud
+     */
+    private function notify_admin_new_request($data) {
+        $admin_email = get_option('admin_email');
+        $subject = 'Nueva Solicitud de Cotización - ' . get_bloginfo('name');
+        
+        $cliente = $data['cliente'];
+        $message = "Has recibido una nueva solicitud de cotización:\n\n";
+        $message .= "Cliente: " . $cliente['nombre'] . "\n";
+        $message .= "Email: " . $cliente['email'] . "\n";
+        $message .= "Teléfono: " . $cliente['telefono'] . "\n";
+        $message .= "Fecha del Evento: " . $cliente['fechaEvento'] . "\n";
+        $message .= "Cantidad de Personas: " . $cliente['cantidadPersonas'] . "\n";
+        $message .= "Formato: " . $cliente['formatoEvento'] . "\n\n";
+        
+        if (!empty($data['productos'])) {
+            $message .= "Productos seleccionados:\n";
+            foreach ($data['productos'] as $producto) {
+                $message .= "- " . $producto['nombre'] . " (Cantidad: " . $producto['cantidad'] . ")\n";
+            }
+            $message .= "\n";
+        }
+        
+        if (!empty($data['comentarios'])) {
+            $message .= "Comentarios: " . $data['comentarios'] . "\n\n";
+        }
+        
+        $message .= "Ingresa al panel de administración para ver más detalles y responder.";
+        
+        wp_mail($admin_email, $subject, $message);
     }
     
     /**

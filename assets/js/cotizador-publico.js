@@ -33,24 +33,24 @@ let motivosEventoPublico = [
 
 let camposPersonalizadosPublico = [];
 
-// Función para cargar datos desde la API REST
+// Función para cargar datos desde la API REST pública
 async function cargarDatosPublicos() {
     try {
-        // Obtener el primer usuario admin para cargar sus datos configurados
-        const adminUserId = 1; // Asumimos que el admin es user_id 1
+        console.log('Cargando datos públicos...');
         
-        // Cargar productos
-        const productosResponse = await fetch(`${cotizadorEventosWP.restUrl}data/productos`, {
+        // Cargar productos (sin precios)
+        const productosResponse = await fetch(`${cotizadorEventosWP.restUrl}public-data/productos`, {
             headers: {
                 'X-WP-Nonce': cotizadorEventosWP.nonce
             }
         });
         if (productosResponse.ok) {
             productosPublico = await productosResponse.json();
+            console.log('Productos cargados:', productosPublico.length);
         }
         
         // Cargar categorías
-        const categoriasResponse = await fetch(`${cotizadorEventosWP.restUrl}data/categorias`, {
+        const categoriasResponse = await fetch(`${cotizadorEventosWP.restUrl}public-data/categorias`, {
             headers: {
                 'X-WP-Nonce': cotizadorEventosWP.nonce
             }
@@ -59,11 +59,12 @@ async function cargarDatosPublicos() {
             const categoriasData = await categoriasResponse.json();
             if (categoriasData.length > 0) {
                 categoriasPublico = categoriasData;
+                console.log('Categorías cargadas:', categoriasPublico.length);
             }
         }
         
         // Cargar experiencias
-        const experienciasResponse = await fetch(`${cotizadorEventosWP.restUrl}data/experiencias`, {
+        const experienciasResponse = await fetch(`${cotizadorEventosWP.restUrl}public-data/experiencias`, {
             headers: {
                 'X-WP-Nonce': cotizadorEventosWP.nonce
             }
@@ -72,11 +73,12 @@ async function cargarDatosPublicos() {
             const experienciasData = await experienciasResponse.json();
             if (experienciasData.length > 0) {
                 experienciasPublico = experienciasData;
+                console.log('Experiencias cargadas:', experienciasPublico.length);
             }
         }
         
         // Cargar motivos
-        const motivosResponse = await fetch(`${cotizadorEventosWP.restUrl}data/motivosEvento`, {
+        const motivosResponse = await fetch(`${cotizadorEventosWP.restUrl}public-data/motivosEvento`, {
             headers: {
                 'X-WP-Nonce': cotizadorEventosWP.nonce
             }
@@ -85,35 +87,41 @@ async function cargarDatosPublicos() {
             const motivosData = await motivosResponse.json();
             if (motivosData.length > 0) {
                 motivosEventoPublico = motivosData;
+                console.log('Motivos cargados:', motivosEventoPublico.length);
             }
         }
         
         // Cargar campos personalizados
-        const camposResponse = await fetch(`${cotizadorEventosWP.restUrl}data/camposPersonalizados`, {
+        const camposResponse = await fetch(`${cotizadorEventosWP.restUrl}public-data/camposPersonalizados`, {
             headers: {
                 'X-WP-Nonce': cotizadorEventosWP.nonce
             }
         });
         if (camposResponse.ok) {
             camposPersonalizadosPublico = await camposResponse.json();
+            console.log('Campos personalizados cargados:', camposPersonalizadosPublico.length);
         }
         
     } catch (error) {
-        console.error('Error cargando datos:', error);
-        // Usar datos por defecto si hay error
+        console.error('Error cargando datos públicos:', error);
     }
 }
 
 // Función para inicializar el cotizador público
 function inicializarCotizadorPublico() {
-    cargarDatosPublicos();
-    actualizarExperienciasCheckboxesPublico();
-    actualizarMotivosCheckboxesPublico();
-    actualizarMenuSelectorPublico();
-    generarCamposPersonalizadosPublico();
+    console.log('Inicializando cotizador público...');
     
-    // Agregar eventos para actualización en tiempo real
-    agregarEventosActualizacionPublico();
+    cargarDatosPublicos().then(() => {
+        actualizarExperienciasCheckboxesPublico();
+        actualizarMotivosCheckboxesPublico();
+        actualizarMenuSelectorPublico();
+        generarCamposPersonalizadosPublico();
+        
+        // Agregar eventos para actualización en tiempo real
+        agregarEventosActualizacionPublico();
+        
+        console.log('Cotizador público inicializado');
+    });
 }
 
 function actualizarExperienciasCheckboxesPublico() {
@@ -540,6 +548,10 @@ function mostrarAlertaPublico(mensaje, tipo) {
 
 // Inicializar cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', function() {
-    // Esperar un poco para asegurar que localStorage esté disponible
-    setTimeout(inicializarCotizadorPublico, 100);
+    // Verificar que estamos en el cotizador público
+    if (typeof cotizadorEventosWP !== 'undefined' && !cotizadorEventosWP.isAdmin) {
+        console.log('Inicializando cotizador público...');
+        // Esperar un poco para asegurar que todo esté disponible
+        setTimeout(inicializarCotizadorPublico, 100);
+    }
 });
