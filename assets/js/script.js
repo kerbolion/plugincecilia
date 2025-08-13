@@ -2429,9 +2429,11 @@ function actualizarListaCategorias() {
         
         html += `
             <div class="categoria-item" draggable="true" data-categoria-id="${categoria.id}" 
-                 style="background: white; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; 
+                 style="background: white; padding: 15px; border-radius: 10px; 
+                        border: ${categoria.ocultarEnPublico ? '2px dashed #6c757d' : '1px solid #dee2e6'}; 
                         display: flex; justify-content: space-between; align-items: center; cursor: grab;
-                        transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                        transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                        opacity: ${categoria.ocultarEnPublico ? '0.7' : '1'};"
                  onmouseenter="this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)'"
                  onmouseleave="this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'">
                 
@@ -2441,7 +2443,10 @@ function actualizarListaCategorias() {
                         <span style="font-size: 1.2rem;">${categoria.icono}</span>
                     </div>
                     <div>
-                        <strong style="color: #2c3e50;">${categoria.nombre}</strong>
+                        <strong style="color: #2c3e50;">
+                            ${categoria.nombre}
+                            ${categoria.ocultarEnPublico ? '<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 8px;">OCULTO</span>' : ''}
+                        </strong>
                         <br><small style="color: #6c757d;">Orden: ${categoria.orden} • ${productosEnCategoria} producto${productosEnCategoria !== 1 ? 's' : ''}</small>
                     </div>
                 </div>
@@ -2451,6 +2456,9 @@ function actualizarListaCategorias() {
                         <button onclick="moverCategoria('${categoria.id}', 'arriba')" style="background: #6c757d; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.8rem;" ${index === 0 ? 'disabled' : ''}>↑</button>
                         <button onclick="moverCategoria('${categoria.id}', 'abajo')" style="background: #6c757d; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.8rem;" ${index === categoriasOrdenadas.length - 1 ? 'disabled' : ''}>↓</button>
                     </div>
+                    <button class="btn ${categoria.ocultarEnPublico ? 'btn-secondary' : ''}" onclick="toggleVisibilidadCategoria('${categoria.id}')" style="font-size: 0.8rem; padding: 6px 10px; background: ${categoria.ocultarEnPublico ? '#6c757d' : '#17a2b8'}; color: white;">
+                        ${categoria.ocultarEnPublico ? '👁️‍🗨️' : '🙈'} Público
+                    </button>
                     <button class="btn" onclick="editarCategoria('${categoria.id}')" style="font-size: 0.8rem; padding: 6px 10px; background: #f39c12; color: white;">✏️ Editar</button>
                     <button class="btn btn-danger" onclick="eliminarCategoria('${categoria.id}')" style="font-size: 0.8rem; padding: 6px 10px;" ${productosEnCategoria > 0 ? 'disabled title="No se puede eliminar: tiene productos asociados"' : ''}>🗑️</button>
                 </div>
@@ -2511,8 +2519,11 @@ function actualizarListaProductos() {
                 const porcentajeMargen = producto.costo > 0 ? ((margen / producto.costo) * 100).toFixed(1) : 0;
                 
                 html += `
-                    <div class="producto-card">
-                        <h4 style="color: #2c3e50; margin-bottom: 10px;">${producto.nombre}</h4>
+                    <div class="producto-card" style="${producto.ocultarEnPublico ? 'opacity: 0.7; border: 2px dashed #6c757d;' : ''}">
+                        <h4 style="color: #2c3e50; margin-bottom: 10px;">
+                            ${producto.nombre}
+                            ${producto.ocultarEnPublico ? '<span style="background: #6c757d; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 8px;">OCULTO</span>' : ''}
+                        </h4>
                         <p style="color: #6c757d; margin-bottom: 15px; min-height: 40px;">${producto.descripcion || 'Sin descripción'}</p>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
                             <div>
@@ -2527,9 +2538,14 @@ function actualizarListaProductos() {
                         <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
                             <small>Margen: $${margen.toFixed(2)} (${porcentajeMargen}%)</small>
                         </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                             <button class="btn" onclick="duplicarProducto(${producto.id})" style="font-size: 0.85rem; padding: 8px 10px;">📋 Duplicar</button>
                             <button class="btn btn-warning" onclick="editarProducto(${producto.id})" style="font-size: 0.85rem; padding: 8px 10px;">✏️ Editar</button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <button class="btn ${producto.ocultarEnPublico ? 'btn-secondary' : ''}" onclick="toggleVisibilidadProducto(${producto.id})" style="font-size: 0.85rem; padding: 8px 10px; background: ${producto.ocultarEnPublico ? '#6c757d' : '#17a2b8'}; color: white;">
+                                ${producto.ocultarEnPublico ? '👁️‍🗨️ Mostrar' : '🙈 Ocultar'} en Público
+                            </button>
                             <button class="btn btn-danger" onclick="eliminarProducto(${producto.id})" style="font-size: 0.85rem; padding: 8px 10px;">🗑️ Eliminar</button>
                         </div>
                     </div>
@@ -2539,6 +2555,32 @@ function actualizarListaProductos() {
     });
 
     container.innerHTML = html;
+}
+
+function toggleVisibilidadProducto(productoId) {
+    const producto = productos.find(p => p.id === productoId);
+    if (!producto) return;
+    
+    producto.ocultarEnPublico = !producto.ocultarEnPublico;
+    guardarProductos();
+    actualizarListaProductos();
+    actualizarMenuSelector();
+    
+    const accion = producto.ocultarEnPublico ? 'ocultado' : 'mostrado';
+    mostrarAlerta('alertProductos', `Producto ${accion} en el cotizador público.`, 'success');
+}
+
+function toggleVisibilidadCategoria(categoriaId) {
+    const categoria = categorias.find(c => c.id === categoriaId);
+    if (!categoria) return;
+    
+    categoria.ocultarEnPublico = !categoria.ocultarEnPublico;
+    guardarCategorias();
+    actualizarListaCategorias();
+    actualizarMenuSelector();
+    
+    const accion = categoria.ocultarEnPublico ? 'ocultada' : 'mostrada';
+    mostrarAlerta('alertCategorias', `Categoría ${accion} en el cotizador público.`, 'success');
 }
 
 // GESTIÓN DEL COTIZADOR

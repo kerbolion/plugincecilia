@@ -172,12 +172,19 @@ function actualizarMenuSelectorPublico() {
         return;
     }
 
-    const categoriasDisponibles = categoriasPublico.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    // Filtrar categorías no ocultas en público
+    const categoriasDisponibles = categoriasPublico
+        .filter(c => !c.ocultarEnPublico)
+        .slice()
+        .sort((a, b) => (a.orden || 0) - (b.orden || 0));
 
     let html = '';
     
     categoriasDisponibles.forEach(categoria => {
-        const productosCategoria = productosPublico.filter(p => p.categoria === categoria.id);
+        // Filtrar productos no ocultos en público
+        const productosCategoria = productosPublico.filter(p => 
+            p.categoria === categoria.id && !p.ocultarEnPublico
+        );
         
         if (productosCategoria.length > 0) {
             html += `
