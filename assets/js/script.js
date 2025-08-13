@@ -2623,67 +2623,34 @@ function validarCantidad(productoId) {
         cantidad = 1;
     }
     
-    const producto = productos.find(p => p.id === productoId);
-    if (!producto) return;
-    
-    const productosCategoria = productos.filter(p => p.categoria === producto.categoria);
-    let totalCategoriaActual = 0;
-    
-    productosCategoria.forEach(p => {
-        if (p.id !== productoId) {
-            const checkbox = document.getElementById(`producto_${p.id}`);
-            const input = document.getElementById(`cantidad_${p.id}`);
-            
-            if (checkbox && checkbox.checked && input) {
-                totalCategoriaActual += parseInt(input.value) || 0;
-            }
-        }
-    });
-    
-    const maximoDisponible = cantidadPersonas - totalCategoriaActual;
-    
-    if (cantidad > maximoDisponible) {
-        cantidad = maximoDisponible;
-        if (maximoDisponible === 0) {
-            mostrarAlerta('alertCotizacion', `No puedes agregar más productos a esta categoría. Ya tienes ${totalCategoriaActual} de ${cantidadPersonas} invitados cubiertos.`, 'error');
-        } else {
-            mostrarAlerta('alertCotizacion', `Solo puedes agregar ${maximoDisponible} más en esta categoría (tienes ${totalCategoriaActual}/${cantidadPersonas}).`, 'error');
-        }
+    // Limitar solo al total de invitados, no por categoría
+    if (cantidad > cantidadPersonas) {
+        cantidad = cantidadPersonas;
+        mostrarAlerta('alertCotizacion', `La cantidad no puede ser mayor al total de invitados (${cantidadPersonas}).`, 'error');
     }
     
     cantidadInput.value = cantidad;
-    cantidadInput.max = maximoDisponible;
+    cantidadInput.max = cantidadPersonas;
     
-    actualizarMaximosCategoria(producto.categoria);
+    validarTotalesProductos();
+    actualizarResumenTiempoReal();
 }
 
 function actualizarMaximosCategoria(categoria) {
     const cantidadPersonas = parseInt(document.getElementById('cantidadPersonas').value) || 0;
     const productosCategoria = productos.filter(p => p.categoria === categoria);
     
-    let totalCategoriaActual = 0;
-    productosCategoria.forEach(p => {
-        const checkbox = document.getElementById(`producto_${p.id}`);
-        const input = document.getElementById(`cantidad_${p.id}`);
-        
-        if (checkbox && checkbox.checked && input) {
-            totalCategoriaActual += parseInt(input.value) || 0;
-        }
-    });
-    
+    // Actualizar máximo de cada producto al total de invitados
     productosCategoria.forEach(p => {
         const checkbox = document.getElementById(`producto_${p.id}`);
         const input = document.getElementById(`cantidad_${p.id}`);
         
         if (checkbox && input && checkbox.checked) {
+            input.max = cantidadPersonas;
+            
             const cantidadActual = parseInt(input.value) || 0;
-            const otrosTotalCategoria = totalCategoriaActual - cantidadActual;
-            const maximoDisponible = cantidadPersonas - otrosTotalCategoria;
-            
-            input.max = maximoDisponible;
-            
-            if (cantidadActual > maximoDisponible) {
-                input.value = maximoDisponible;
+            if (cantidadActual > cantidadPersonas) {
+                input.value = cantidadPersonas;
                 calcularTotalProducto(p.id);
             }
         }
@@ -2704,48 +2671,15 @@ function toggleProducto(productoId) {
         }
         
         cantidadInput.disabled = false;
-        
-        const producto = productos.find(p => p.id === productoId);
-        if (producto) {
-            const productosCategoria = productos.filter(p => p.categoria === producto.categoria);
-            let totalCategoriaActual = 0;
-            
-            productosCategoria.forEach(p => {
-                if (p.id !== productoId) {
-                    const cb = document.getElementById(`producto_${p.id}`);
-                    const inp = document.getElementById(`cantidad_${p.id}`);
-                    
-                    if (cb && cb.checked && inp) {
-                        totalCategoriaActual += parseInt(inp.value) || 0;
-                    }
-                }
-            });
-            
-            const maximoDisponible = cantidadPersonas - totalCategoriaActual;
-            
-            if (maximoDisponible <= 0) {
-                checkbox.checked = false;
-                cantidadInput.disabled = true;
-                mostrarAlerta('alertCotizacion', `No puedes seleccionar más productos en esta categoría. Ya tienes ${totalCategoriaActual} de ${cantidadPersonas} invitados cubiertos.`, 'error');
-                return;
-            }
-            
-            cantidadInput.max = maximoDisponible;
-            cantidadInput.value = Math.min(1, maximoDisponible);
-        }
+        cantidadInput.max = cantidadPersonas;
+        cantidadInput.value = 1;
         
         cantidadInput.focus();
         calcularTotalProducto(productoId);
-        actualizarMaximosCategoria(producto.categoria);
     } else {
         cantidadInput.disabled = true;
         cantidadInput.value = 1;
         subtotalDiv.textContent = ocultarPrecios ? 'Oculto' : '$0.00';
-        
-        const producto = productos.find(p => p.id === productoId);
-        if (producto) {
-            actualizarMaximosCategoria(producto.categoria);
-        }
         
         validarTotalesProductos();
     }
@@ -2765,7 +2699,6 @@ function calcularTotalProducto(productoId) {
         const subtotal = producto.precio * cantidad;
         subtotalDiv.textContent = ocultarPrecios ? 'Oculto' : `$${subtotal.toFixed(2)}`;
         
-        actualizarMaximosCategoria(producto.categoria);
         validarTotalesProductos();
         actualizarResumenTiempoReal();
     }
@@ -2782,7 +2715,7 @@ function validarTotalesProductos() {
         const menuSelector = document.getElementById('menuSelector');
         menuSelector.insertAdjacentHTML('beforeend', `
             <div id="resumenValidacion" style="margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 10px; border-left: 4px solid #667eea;">
-                <h5 style="color: #667eea; margin-bottom: 15px;">📊 Resumen de Cantidades</h5>
+                <h5 style="color: #667eea; margin-bottom: 15px;">📊 Resumen de Productos Seleccionados</h5>
                 <div id="resumenContenido"></div>
             </div>
         `);
@@ -2790,11 +2723,9 @@ function validarTotalesProductos() {
     }
     
     let resumenHtml = '';
-    let hayErrores = false;
     
     categoriasValidacion.forEach(categoria => {
         const productosCategoria = productos.filter(p => p.categoria === categoria.id);
-        let totalCategoria = 0;
         let productosSeleccionados = [];
         
         productosCategoria.forEach(producto => {
@@ -2804,7 +2735,6 @@ function validarTotalesProductos() {
             if (checkbox && checkbox.checked && cantidadInput) {
                 const cantidad = parseInt(cantidadInput.value) || 0;
                 if (cantidad > 0) {
-                    totalCategoria += cantidad;
                     productosSeleccionados.push({
                         nombre: producto.nombre,
                         cantidad: cantidad
@@ -2814,24 +2744,17 @@ function validarTotalesProductos() {
         });
         
         if (productosSeleccionados.length > 0) {
-            const esValido = totalCategoria <= cantidadPersonas;
-            const colorEstado = esValido ? '#28a745' : '#dc3545';
-            const iconoEstado = esValido ? '✅' : '❌';
-            
-            if (!esValido) hayErrores = true;
-            
             resumenHtml += `
-                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 8px; border-left: 3px solid ${colorEstado};">
+                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 8px; border-left: 3px solid #28a745;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: ${colorEstado};">${iconoEstado} ${categoria.icono} ${categoria.nombre}</strong>
-                        <span style="font-weight: 600; color: ${colorEstado};">
-                            ${totalCategoria}/${cantidadPersonas} personas
+                        <strong style="color: #28a745;">✅ ${categoria.icono} ${categoria.nombre}</strong>
+                        <span style="font-weight: 600; color: #28a745;">
+                            ${productosSeleccionados.reduce((sum, p) => sum + p.cantidad, 0)} productos
                         </span>
                     </div>
                     <div style="font-size: 0.9rem; color: #6c757d;">
                         ${productosSeleccionados.map(p => `${p.nombre}: ${p.cantidad}`).join(' • ')}
                     </div>
-                    ${!esValido ? `<div style="font-size: 0.8rem; color: #dc3545; margin-top: 5px;">⚠️ Excede por ${totalCategoria - cantidadPersonas} personas</div>` : ''}
                 </div>
             `;
         }
@@ -2843,22 +2766,13 @@ function validarTotalesProductos() {
     
     document.getElementById('resumenContenido').innerHTML = resumenHtml;
     
+    // Eliminar cualquier mensaje de error previo
     const mensajeError = document.getElementById('mensajeErrorValidacion');
-    if (hayErrores) {
-        if (!mensajeError) {
-            document.getElementById('resumenValidacion').insertAdjacentHTML('beforeend', `
-                <div id="mensajeErrorValidacion" style="margin-top: 15px; padding: 12px; background: #f8d7da; color: #721c24; border-radius: 8px; border: 1px solid #f5c6cb;">
-                    <strong>⚠️ Error de validación:</strong> Hay categorías que exceden el número de invitados. Ajusta las cantidades antes de guardar la cotización.
-                </div>
-            `);
-        }
-    } else {
-        if (mensajeError) {
-            mensajeError.remove();
-        }
+    if (mensajeError) {
+        mensajeError.remove();
     }
     
-    return !hayErrores;
+    return true;
 }
 
 function guardarCotizacion() {
