@@ -16,10 +16,10 @@ if (!defined('ABSPATH')) {
     </div>
 
     <div class="tabs no-print">
-        <button class="tab active" onclick="showTab('productos')">📦 Productos</button>
-        <button class="tab" onclick="showTab('cotizador')">💰 Cotizador</button>
-        <button class="tab" onclick="showTab('historial')">📋 Historial</button>
-        <button class="tab" onclick="showTab('gestiones')">⚙️ Gestiones</button>
+        <button class="tab active" onclick="showTab('productos', event)">📦 Productos</button>
+        <button class="tab" onclick="showTab('cotizador', event)">💰 Cotizador</button>
+        <button class="tab" onclick="showTab('historial', event)">📋 Historial</button>
+        <button class="tab" onclick="showTab('gestiones', event)">⚙️ Gestiones</button>
     </div>
 
     <!-- TAB PRODUCTOS -->

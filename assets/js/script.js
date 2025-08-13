@@ -196,8 +196,8 @@ function actualizarResumenTiempoReal() {
             nombre: nombreCliente,
             email: emailCliente,
             telefono: telefonoCliente,
-            fechaEvento: new Date(fechaEvento).toLocaleDateString(),
-            horaEvento: new Date(fechaEvento).toLocaleTimeString(),
+            fechaEvento: fechaEvento ? new Date(fechaEvento).toLocaleDateString() : '',
+            horaEvento: fechaEvento ? new Date(fechaEvento).toLocaleTimeString() : '',
             fechaEventoOriginal: fechaEvento,
             cantidadPersonas,
             formatoEvento
@@ -283,11 +283,11 @@ function mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fecha
                 </div>
                 <div class="info-box">
                     <div class="info-label">Fecha del Evento</div>
-                    <div class="info-value">${new Date(fechaEvento).toLocaleDateString()}</div>
+                    <div class="info-value">${fechaEvento ? new Date(fechaEvento).toLocaleDateString() : 'No especificada'}</div>
                 </div>
                 <div class="info-box">
                     <div class="info-label">Hora</div>
-                    <div class="info-value">${new Date(fechaEvento).toLocaleTimeString()}</div>
+                    <div class="info-value">${fechaEvento ? new Date(fechaEvento).toLocaleTimeString() : 'No especificada'}</div>
                 </div>
                 <div class="info-box">
                     <div class="info-label">Personas</div>
@@ -1735,7 +1735,7 @@ function imprimirResumen() {
 }
 
 // Gestión de tabs
-function showTab(tabName) {
+function showTab(tabName, event) {
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
     });
@@ -1746,7 +1746,15 @@ function showTab(tabName) {
     
     document.getElementById(tabName).classList.add('active');
     
-    event.target.classList.add('active');
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        // Buscar el tab correspondiente y activarlo
+        const tabButton = document.querySelector(`button[onclick*="showTab('${tabName}')"]`);
+        if (tabButton) {
+            tabButton.classList.add('active');
+        }
+    }
     
     if (tabName === 'cotizador') {
         setTimeout(actualizarResumenTiempoReal, 100);
@@ -2299,6 +2307,106 @@ function actualizarBotonCategoria() {
     }
 }
 
+function moverCategoria(categoriaId, direccion) {
+    const categoriasOrdenadas = categorias.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    const index = categoriasOrdenadas.findIndex(cat => cat.id === categoriaId);
+    
+    if (index === -1) return;
+    
+    let nuevoIndex;
+    if (direccion === 'arriba' && index > 0) {
+        nuevoIndex = index - 1;
+    } else if (direccion === 'abajo' && index < categoriasOrdenadas.length - 1) {
+        nuevoIndex = index + 1;
+    } else {
+        return;
+    }
+    
+    const categoriaActual = categoriasOrdenadas[index];
+    const categoriaDestino = categoriasOrdenadas[nuevoIndex];
+    
+    const ordenTemporal = categoriaActual.orden;
+    categoriaActual.orden = categoriaDestino.orden;
+    categoriaDestino.orden = ordenTemporal;
+    
+    const indexActual = categorias.findIndex(cat => cat.id === categoriaActual.id);
+    const indexDestino = categorias.findIndex(cat => cat.id === categoriaDestino.id);
+    
+    if (indexActual !== -1) categorias[indexActual].orden = categoriaActual.orden;
+    if (indexDestino !== -1) categorias[indexDestino].orden = categoriaDestino.orden;
+    
+    guardarCategorias();
+    actualizarListaCategorias();
+    actualizarSelectCategorias();
+    actualizarListaProductos();
+    actualizarMenuSelector();
+    
+    mostrarAlerta('alertCategorias', 'Orden de categorías actualizado.', 'success');
+}
+
+function inicializarDragAndDrop() {
+    const items = document.querySelectorAll('.categoria-item');
+    let draggedElement = null;
+    
+    items.forEach(item => {
+        item.addEventListener('dragstart', function(e) {
+            draggedElement = this;
+            this.style.opacity = '0.5';
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.outerHTML);
+        });
+        
+        item.addEventListener('dragend', function(e) {
+            this.style.opacity = '1';
+            draggedElement = null;
+        });
+        
+        item.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            this.style.borderTop = '3px solid #667eea';
+        });
+        
+        item.addEventListener('dragleave', function(e) {
+            this.style.borderTop = '1px solid #dee2e6';
+        });
+        
+        item.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.style.borderTop = '1px solid #dee2e6';
+            
+            if (draggedElement !== this) {
+                const draggedId = draggedElement.getAttribute('data-categoria-id');
+                const targetId = this.getAttribute('data-categoria-id');
+                
+                reordenarCategorias(draggedId, targetId);
+            }
+        });
+    });
+}
+
+function reordenarCategorias(draggedId, targetId) {
+    const draggedIndex = categorias.findIndex(cat => cat.id === draggedId);
+    const targetIndex = categorias.findIndex(cat => cat.id === targetId);
+    
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    
+    const draggedCategory = categorias[draggedIndex];
+    const targetCategory = categorias[targetIndex];
+    
+    const ordenTemporal = draggedCategory.orden;
+    draggedCategory.orden = targetCategory.orden;
+    targetCategory.orden = ordenTemporal;
+    
+    guardarCategorias();
+    actualizarListaCategorias();
+    actualizarSelectCategorias();
+    actualizarListaProductos();
+    actualizarMenuSelector();
+    
+    mostrarAlerta('alertCategorias', 'Categorías reordenadas exitosamente.', 'success');
+}
+
 function actualizarListaCategorias() {
     const container = document.getElementById('listaCategorias');
     
@@ -2309,15 +2417,26 @@ function actualizarListaCategorias() {
 
     const categoriasOrdenadas = categorias.slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
 
-    let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+    let html = `
+        <div style="margin-bottom: 15px; padding: 10px; background: #e3f2fd; border-radius: 8px; font-size: 0.9rem; color: #1976d2;">
+            💡 <strong>Reordenar categorías:</strong> Arrastra las categorías para cambiar el orden en que aparecen en las cotizaciones
+        </div>
+        <div id="categorias-sortable" style="display: flex; flex-direction: column; gap: 10px;">
+    `;
     
     categoriasOrdenadas.forEach((categoria, index) => {
         const productosEnCategoria = productos.filter(p => p.categoria === categoria.id).length;
         
         html += `
-            <div style="background: white; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; 
-                        display: flex; justify-content: space-between; align-items: center;">
+            <div class="categoria-item" draggable="true" data-categoria-id="${categoria.id}" 
+                 style="background: white; padding: 15px; border-radius: 10px; border: 1px solid #dee2e6; 
+                        display: flex; justify-content: space-between; align-items: center; cursor: grab;
+                        transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0,0,0,0.1);"
+                 onmouseenter="this.style.boxShadow='0 4px 8px rgba(0,0,0,0.15)'"
+                 onmouseleave="this.style.boxShadow='0 2px 4px rgba(0,0,0,0.1)'">
+                
                 <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="cursor: grab; color: #6c757d; font-size: 1.2rem;" title="Arrastra para reordenar">⋮⋮</div>
                     <div style="background: #f8f9fa; padding: 5px; border-radius: 50%; min-width: 40px; text-align: center;">
                         <span style="font-size: 1.2rem;">${categoria.icono}</span>
                     </div>
@@ -2328,6 +2447,10 @@ function actualizarListaCategorias() {
                 </div>
                 
                 <div style="display: flex; gap: 8px; align-items: center;">
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="moverCategoria('${categoria.id}', 'arriba')" style="background: #6c757d; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.8rem;" ${index === 0 ? 'disabled' : ''}>↑</button>
+                        <button onclick="moverCategoria('${categoria.id}', 'abajo')" style="background: #6c757d; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.8rem;" ${index === categoriasOrdenadas.length - 1 ? 'disabled' : ''}>↓</button>
+                    </div>
                     <button class="btn" onclick="editarCategoria('${categoria.id}')" style="font-size: 0.8rem; padding: 6px 10px; background: #f39c12; color: white;">✏️ Editar</button>
                     <button class="btn btn-danger" onclick="eliminarCategoria('${categoria.id}')" style="font-size: 0.8rem; padding: 6px 10px;" ${productosEnCategoria > 0 ? 'disabled title="No se puede eliminar: tiene productos asociados"' : ''}>🗑️</button>
                 </div>
@@ -2337,6 +2460,11 @@ function actualizarListaCategorias() {
     
     html += '</div>';
     container.innerHTML = html;
+    
+    // Inicializar drag and drop
+    setTimeout(() => {
+        inicializarDragAndDrop();
+    }, 100);
 }
 
 function actualizarSelectCategorias() {
@@ -2965,7 +3093,8 @@ function mostrarCotizacionesEnTabla(cotizaciones) {
         const totalProductos = cot.productos.length;
         const fechaClass = new Date(cot.cliente.fechaEvento) < new Date() ? 'color: #dc3545;' : 'color: #28a745;';
         
-        const estadoCotizacion = estadosCotizacion.find(est => est.id === cot.estado) || { nombre: 'Sin estado', icono: '❓', color: '#6c757d' };
+        const estadoCotizacion = estadosCotizacion.find(est => est.id === cot.estado) || 
+            (cot.estado === 'solicitud_publica' ? { nombre: 'Solicitud Pública', icono: '🌐', color: '#17a2b8' } : { nombre: 'Sin estado', icono: '❓', color: '#6c757d' });
         
         html += `
             <tr style="border-bottom: 1px solid #dee2e6; transition: background-color 0.3s ease;" 
@@ -2982,8 +3111,8 @@ function mostrarCotizacionesEnTabla(cotizaciones) {
                     </div>
                 </td>
                 <td style="padding: 15px; text-align: center;">
-                    <div>${cot.cliente.fechaEvento}</div>
-                    <small style="color: #6c757d;">${cot.cliente.horaEvento}</small>
+                    <div>${cot.cliente.fechaEvento || 'No especificada'}</div>
+                    <small style="color: #6c757d;">${cot.cliente.horaEvento || 'No especificada'}</small>
                 </td>
                 <td style="padding: 15px; text-align: center; font-weight: 600;">${cot.cliente.cantidadPersonas}</td>
                 <td style="padding: 15px; text-align: center;">
@@ -3002,6 +3131,7 @@ function mostrarCotizacionesEnTabla(cotizaciones) {
                     <div style="display: flex; gap: 5px; justify-content: center; flex-wrap: wrap;">
                         <button class="btn" onclick="verDetalleCotizacion(${index})" style="font-size: 0.8rem; padding: 6px 10px;">👁️ Ver</button>
                         <button class="btn btn-warning" onclick="editarCotizacion(${index})" style="font-size: 0.8rem; padding: 6px 10px;">✏️ Editar</button>
+                        <button class="btn" onclick="mostrarHistorialVersiones(${cot.id})" style="font-size: 0.8rem; padding: 6px 10px; background: #28a745; color: white;">🔄 Versiones</button>
                         <button class="btn" onclick="duplicarCotizacion(${index})" style="font-size: 0.8rem; padding: 6px 10px;">📋 Duplicar</button>
                         <button class="btn" onclick="descargarCotizacionIndividual(${index})" style="font-size: 0.8rem; padding: 6px 10px;">💾 Descargar</button>
                         <button class="btn btn-danger" onclick="eliminarCotizacion(${index})" style="font-size: 0.8rem; padding: 6px 10px;">🗑️</button>
@@ -3443,6 +3573,419 @@ function contarSolicitudesPendientes() {
                 }
             }
         }
+    });
+}
+
+// FUNCIONES DEL SISTEMA DE VERSIONES
+function mostrarHistorialVersiones(cotizacionId) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
+        
+        if (!cotizacion) {
+            mostrarAlerta('alertVersiones', 'Cotización no encontrada.', 'error');
+            return;
+        }
+
+        cotizacionSeleccionada = cotizacion;
+        
+        const container = document.getElementById('historialVersiones');
+        
+        if (!cotizacion.versiones || cotizacion.versiones.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #6c757d;">
+                    <p>Esta cotización no tiene historial de versiones.</p>
+                    <button class="btn" onclick="migrarCotizacionAVersiones(${cotizacionId})" style="background: #28a745; color: white;">
+                        📝 Crear Sistema de Versiones
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <h4 style="color: #28a745; margin: 0;">📋 ${cotizacion.cliente.nombre} - ${cotizacion.cliente.fechaEvento}</h4>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" onclick="editarCotizacionParaNuevaVersion(${cotizacionId})" style="background: #007bff; color: white;">
+                        ✏️ Editar (Nueva Versión)
+                    </button>
+                    <button class="btn" onclick="cerrarHistorialVersiones()" style="background: #6c757d; color: white;">
+                        ❌ Cerrar
+                    </button>
+                </div>
+            </div>
+            
+            <div style="display: grid; gap: 15px;">
+        `;
+
+        const versionesOrdenadas = cotizacion.versiones.slice().sort((a, b) => b.version - a.version);
+        
+        versionesOrdenadas.forEach(version => {
+            const fechaFormateada = new Date(version.fecha).toLocaleString();
+            const esVersionActual = version.version === cotizacion.versionActual;
+            
+            html += `
+                <div style="background: white; border-radius: 10px; border: 2px solid ${esVersionActual ? '#28a745' : '#dee2e6'}; padding: 20px; position: relative;">
+                    ${esVersionActual ? `
+                        <div style="position: absolute; top: -10px; right: 15px; background: #28a745; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8rem; font-weight: 600;">
+                            ACTUAL
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                        <div>
+                            <h5 style="color: #2c3e50; margin: 0 0 5px 0;">
+                                🔄 Versión ${version.version}
+                                ${esVersionActual ? ' (Actual)' : ''}
+                            </h5>
+                            <p style="margin: 0; color: #6c757d; font-size: 0.9rem;">
+                                ${version.descripcion}
+                            </p>
+                            <small style="color: #6c757d;">
+                                📅 ${fechaFormateada}
+                            </small>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn" onclick="verDetalleVersion(${cotizacionId}, ${version.version})" style="font-size: 0.8rem; padding: 6px 10px; background: #17a2b8; color: white;">
+                                👁️ Ver
+                            </button>
+                            <button class="btn" onclick="compararVersion(${cotizacionId}, ${version.version})" style="font-size: 0.8rem; padding: 6px 10px; background: #ffc107; color: black;">
+                                ⚖️ Comparar
+                            </button>
+                            ${!esVersionActual ? `
+                                <button class="btn" onclick="restaurarVersion(${cotizacionId}, ${version.version})" style="font-size: 0.8rem; padding: 6px 10px; background: #28a745; color: white;">
+                                    🔄 Restaurar
+                                </button>
+                                <button class="btn" onclick="crearRamaDesdeVersion(${cotizacionId}, ${version.version})" style="font-size: 0.8rem; padding: 6px 10px; background: #6f42c1; color: white;">
+                                    🌿 Crear Rama
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; font-size: 0.9rem;">
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                            <strong>Total:</strong> $${version.datos.totales?.subtotal?.toFixed(2) || '0.00'}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                            <strong>Productos:</strong> ${version.datos.productos?.length || 0}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                            <strong>Estado:</strong> ${getEstadoNombre(version.datos.estado)}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                            <strong>Personas:</strong> ${version.datos.cliente?.cantidadPersonas || 0}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        container.innerHTML = html;
+    });
+}
+
+function getEstadoNombre(estadoId) {
+    const estado = estadosCotizacion.find(est => est.id === estadoId);
+    return estado ? `${estado.icono} ${estado.nombre}` : '❓ Sin estado';
+}
+
+function cerrarHistorialVersiones() {
+    const container = document.getElementById('historialVersiones');
+    container.innerHTML = '<p style="text-align: center; color: #6c757d; font-style: italic;">Selecciona una cotización de la tabla para ver su historial de versiones.</p>';
+    cotizacionSeleccionada = null;
+}
+
+function migrarCotizacionAVersiones(cotizacionId) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const index = cotizaciones.findIndex(cot => cot.id === cotizacionId);
+        
+        if (index === -1) return;
+        
+        const cotizacion = cotizaciones[index];
+        
+        const fechaOriginal = new Date(cotizacion.fechaCotizacion + 'T00:00:00');
+        const fechaHora = `${fechaOriginal.toLocaleDateString()} ${fechaOriginal.toLocaleTimeString()}`;
+        
+        const datosOriginales = copiarProfundo(cotizacion);
+        delete datosOriginales.versiones;
+        delete datosOriginales.versionActual;
+        
+        cotizacion.versiones = [{
+            version: 1,
+            fecha: fechaOriginal.toISOString(),
+            datos: datosOriginales,
+            descripcion: `v1 - ${fechaHora} (migrada)`
+        }];
+        cotizacion.versionActual = 1;
+        
+        guardarDatosEnAPI('cotizaciones', cotizaciones);
+        
+        mostrarHistorialVersiones(cotizacionId);
+        mostrarAlerta('alertVersiones', 'Sistema de versiones creado exitosamente.', 'success');
+    });
+}
+
+function editarCotizacionParaNuevaVersion(cotizacionId) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
+        
+        if (!cotizacion) {
+            mostrarAlerta('alertVersiones', 'Cotización no encontrada.', 'error');
+            return;
+        }
+        
+        cotizacionEditando = cotizacion;
+        cargarDatosCotizacion(cotizacion);
+        showTab('cotizador');
+        
+        const proximaVersion = Math.max(...cotizacion.versiones.map(v => v.version)) + 1;
+        const fechaHora = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+        
+        const indicador = document.getElementById('indicadorVersion');
+        const nombreVersion = document.getElementById('nombreVersionEditando');
+        
+        if (indicador) indicador.style.display = 'block';
+        if (nombreVersion) nombreVersion.textContent = `v${proximaVersion} - ${fechaHora}`;
+        
+        document.getElementById('tituloCotizador').textContent = 'Editando Cotización (Nueva Versión)';
+    });
+}
+
+function verDetalleVersion(cotizacionId, numeroVersion) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
+        
+        if (!cotizacion) return;
+        
+        const version = cotizacion.versiones.find(v => v.version === numeroVersion);
+        if (!version) return;
+        
+        const modalHtml = `
+            <div id="modalVersionDetalle" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center;" onclick="cerrarModalVersion()">
+                <div style="background: white; border-radius: 15px; padding: 30px; max-width: 800px; max-height: 90vh; overflow-y: auto; margin: 20px;" onclick="event.stopPropagation()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #28a745; padding-bottom: 15px;">
+                        <h3 style="color: #28a745; margin: 0;">🔄 Versión ${version.version} - ${version.descripcion}</h3>
+                        <button onclick="cerrarModalVersion()" style="background: #dc3545; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">×</button>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <strong>📅 Fecha de creación:</strong> ${new Date(version.fecha).toLocaleString()}
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Cliente:</strong><br>${version.datos.cliente?.nombre || 'N/A'}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Estado:</strong><br>${getEstadoNombre(version.datos.estado)}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Personas:</strong><br>${version.datos.cliente?.cantidadPersonas || 0}
+                        </div>
+                        <div style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                            <strong>Total:</strong><br><span style="color: #28a745; font-weight: 700; font-size: 1.2rem;">$${version.datos.totales?.subtotal?.toFixed(2) || '0.00'}</span>
+                        </div>
+                    </div>
+
+                    <h4 style="color: #2c3e50; margin-bottom: 15px;">Productos en esta versión:</h4>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        ${version.datos.productos?.map(p => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: #f8f9fa; margin-bottom: 10px; border-radius: 8px;">
+                                <div>
+                                    <strong>${p.nombre}</strong>
+                                    <br><small style="color: #6c757d;">Cantidad: ${p.cantidad}</small>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 600; color: #28a745;">$${p.subtotal?.toFixed(2) || '0.00'}</div>
+                                    <small style="color: #6c757d;">$${p.precio?.toFixed(2) || '0.00'} c/u</small>
+                                </div>
+                            </div>
+                        `).join('') || '<p style="text-align: center; color: #6c757d;">No hay productos en esta versión</p>'}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    });
+}
+
+function cerrarModalVersion() {
+    const modal = document.getElementById('modalVersionDetalle');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function compararVersion(cotizacionId, numeroVersion) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
+        
+        if (!cotizacion) return;
+        
+        const versionAnterior = cotizacion.versiones.find(v => v.version === numeroVersion);
+        const versionActual = cotizacion.versiones.find(v => v.version === cotizacion.versionActual);
+        
+        if (!versionAnterior || !versionActual) return;
+        
+        function generarResumenProductos(productos) {
+            if (!productos || productos.length === 0) {
+                return '<p style="color: #6c757d; font-style: italic;">Sin productos</p>';
+            }
+            
+            return productos.map(p => `
+                <div style="display: flex; justify-content: space-between; padding: 8px; background: #f8f9fa; margin-bottom: 5px; border-radius: 5px; font-size: 0.9rem;">
+                    <span><strong>${p.nombre}</strong> (x${p.cantidad})</span>
+                    <span style="color: #28a745; font-weight: 600;">$${p.subtotal?.toFixed(2) || '0.00'}</span>
+                </div>
+            `).join('');
+        }
+        
+        const modalHtml = `
+            <div id="modalComparacion" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center;" onclick="cerrarModalComparacion()">
+                <div style="background: white; border-radius: 15px; padding: 30px; max-width: 1200px; max-height: 90vh; overflow-y: auto; margin: 20px; width: 95%;" onclick="event.stopPropagation()">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #ffc107; padding-bottom: 15px;">
+                        <h3 style="color: #ffc107; margin: 0;">⚖️ Comparación Detallada de Versiones</h3>
+                        <button onclick="cerrarModalComparacion()" style="background: #dc3545; color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">×</button>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        <div style="border: 2px solid #dc3545; border-radius: 10px; padding: 15px;">
+                            <h4 style="color: #dc3545; margin-top: 0;">📋 Versión ${versionAnterior.version} - ${versionAnterior.descripcion}</h4>
+                            
+                            <div style="background: #fff5f5; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                                <p><strong>📅 Fecha:</strong> ${new Date(versionAnterior.fecha).toLocaleString()}</p>
+                                <p><strong>👤 Cliente:</strong> ${versionAnterior.datos.cliente?.nombre || 'N/A'}</p>
+                                <p><strong>📊 Estado:</strong> ${getEstadoNombre(versionAnterior.datos.estado)}</p>
+                                <p><strong>👥 Personas:</strong> ${versionAnterior.datos.cliente?.cantidadPersonas || 0}</p>
+                            </div>
+                            
+                            <div style="background: #fff5f5; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                                <h5 style="color: #dc3545; margin-top: 0;">💰 Totales:</h5>
+                                <p><strong>Subtotal:</strong> $${versionAnterior.datos.totales?.subtotal?.toFixed(2) || '0.00'}</p>
+                                <p><strong>Costo:</strong> $${versionAnterior.datos.totales?.costoTotal?.toFixed(2) || '0.00'}</p>
+                                <p><strong>Margen:</strong> $${versionAnterior.datos.totales?.margenTotal?.toFixed(2) || '0.00'}</p>
+                            </div>
+                            
+                            <div style="margin-bottom: 15px;">
+                                <h5 style="color: #dc3545; margin-bottom: 10px;">🍽️ Productos (${versionAnterior.datos.productos?.length || 0}):</h5>
+                                <div style="max-height: 200px; overflow-y: auto;">
+                                    ${generarResumenProductos(versionAnterior.datos.productos)}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="border: 2px solid #28a745; border-radius: 10px; padding: 15px;">
+                            <h4 style="color: #28a745; margin-top: 0;">📋 Versión ${versionActual.version} - ${versionActual.descripcion} (Actual)</h4>
+                            
+                            <div style="background: #f0fff4; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                                <p><strong>📅 Fecha:</strong> ${new Date(versionActual.fecha).toLocaleString()}</p>
+                                <p><strong>👤 Cliente:</strong> ${versionActual.datos.cliente?.nombre || 'N/A'}</p>
+                                <p><strong>📊 Estado:</strong> ${getEstadoNombre(versionActual.datos.estado)}</p>
+                                <p><strong>👥 Personas:</strong> ${versionActual.datos.cliente?.cantidadPersonas || 0}</p>
+                            </div>
+                            
+                            <div style="background: #f0fff4; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                                <h5 style="color: #28a745; margin-top: 0;">💰 Totales:</h5>
+                                <p><strong>Subtotal:</strong> $${versionActual.datos.totales?.subtotal?.toFixed(2) || '0.00'}</p>
+                                <p><strong>Costo:</strong> $${versionActual.datos.totales?.costoTotal?.toFixed(2) || '0.00'}</p>
+                                <p><strong>Margen:</strong> $${versionActual.datos.totales?.margenTotal?.toFixed(2) || '0.00'}</p>
+                            </div>
+                            
+                            <div style="margin-bottom: 15px;">
+                                <h5 style="color: #28a745; margin-bottom: 10px;">🍽️ Productos (${versionActual.datos.productos?.length || 0}):</h5>
+                                <div style="max-height: 200px; overflow-y: auto;">
+                                    ${generarResumenProductos(versionActual.datos.productos)}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    });
+}
+
+function cerrarModalComparacion() {
+    const modal = document.getElementById('modalComparacion');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function restaurarVersion(cotizacionId, numeroVersion) {
+    if (!confirm(`¿Estás seguro de restaurar la versión ${numeroVersion}? Esto creará una nueva versión con los datos de la versión seleccionada.`)) {
+        return;
+    }
+    
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const index = cotizaciones.findIndex(cot => cot.id === cotizacionId);
+        
+        if (index === -1) return;
+        
+        const cotizacion = cotizaciones[index];
+        const versionARestaurar = cotizacion.versiones.find(v => v.version === numeroVersion);
+        
+        if (!versionARestaurar) return;
+        
+        const fechaHora = new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString();
+        const siguienteVersion = Math.max(...cotizacion.versiones.map(v => v.version)) + 1;
+        
+        const datosRestaurados = copiarProfundo(versionARestaurar.datos);
+        delete datosRestaurados.versiones;
+        delete datosRestaurados.versionActual;
+        
+        cotizacion.versiones.push({
+            version: siguienteVersion,
+            fecha: new Date().toISOString(),
+            datos: datosRestaurados,
+            descripcion: `v${siguienteVersion} - ${fechaHora} (restaurada desde v${numeroVersion})`
+        });
+        cotizacion.versionActual = siguienteVersion;
+        
+        Object.assign(cotizacion, datosRestaurados);
+        cotizacion.versiones = cotizacion.versiones;
+        cotizacion.versionActual = siguienteVersion;
+        
+        guardarDatosEnAPI('cotizaciones', cotizaciones);
+        
+        mostrarHistorialVersiones(cotizacionId);
+        mostrarAlerta('alertVersiones', `Versión ${numeroVersion} restaurada como versión ${siguienteVersion}.`, 'success');
+    });
+}
+
+function crearRamaDesdeVersion(cotizacionId, numeroVersion) {
+    const descripcion = prompt(`Ingresa una descripción para la nueva rama basada en la versión ${numeroVersion}:`);
+    if (!descripcion) return;
+    
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
+        
+        if (!cotizacion) return;
+        
+        const versionBase = cotizacion.versiones.find(v => v.version === numeroVersion);
+        if (!versionBase) return;
+        
+        const nuevaCotizacion = copiarProfundo(versionBase.datos);
+        nuevaCotizacion.id = Date.now();
+        nuevaCotizacion.fechaCotizacion = new Date().toLocaleDateString();
+        nuevaCotizacion.cliente = {
+            ...nuevaCotizacion.cliente,
+            nombre: nuevaCotizacion.cliente.nombre + ` (Rama v${numeroVersion})`
+        };
+        
+        cotizacionActual = nuevaCotizacion;
+        
+        showTab('cotizador');
+        
+        mostrarResumenCotizacion();
+        
+        mostrarAlerta('alertCotizacion', `Rama creada desde versión ${numeroVersion}. Puedes modificar y guardar como nueva cotización.`, 'success');
     });
 }
 

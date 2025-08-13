@@ -408,7 +408,7 @@ function enviarSolicitudCotizacion() {
             nombre: nombreCliente,
             email: emailCliente,
             telefono: telefonoCliente,
-            fechaEvento: new Date(fechaEvento).toLocaleString(),
+            fechaEvento: fechaEvento,
             cantidadPersonas: cantidadPersonas,
             formatoEvento: formatoEvento
         },
