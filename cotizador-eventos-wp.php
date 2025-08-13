@@ -385,24 +385,56 @@ class CotizadorEventosWP {
         $data = $request['data'];
         $table_name = $wpdb->prefix . 'cotizador_eventos_data';
         
-        // Usar user_id = 0 para solicitudes públicas
-        $user_id = 0;
-        $data_type = 'solicitud_publica_' . time(); // Tipo único con timestamp
+        // Convertir solicitud pública en cotización real
+        $cotizacion = $this->convertir_solicitud_a_cotizacion($data);
         
-        $data_content = json_encode($data);
+        // Buscar el primer usuario admin para asociar la cotización
+        $admin_user = get_users(array(
+            'role' => 'administrator',
+            'number' => 1
+        ));
         
-        $result = $wpdb->insert(
-            $table_name,
-            array(
-                'user_id' => $user_id,
-                'data_type' => $data_type,
-                'data_content' => $data_content
-            )
-        );
+        $user_id = !empty($admin_user) ? $admin_user[0]->ID : 1;
+        
+        // Obtener cotizaciones existentes del admin
+        $cotizaciones_existentes = $wpdb->get_var($wpdb->prepare(
+            "SELECT data_content FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            'cotizaciones'
+        ));
+        
+        $cotizaciones = $cotizaciones_existentes ? json_decode($cotizaciones_existentes, true) : array();
+        
+        // Agregar la nueva cotización
+        $cotizaciones[] = $cotizacion;
+        
+        // Guardar cotizaciones actualizadas
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            'cotizaciones'
+        ));
+        
+        if ($exists) {
+            $result = $wpdb->update(
+                $table_name,
+                array('data_content' => json_encode($cotizaciones)),
+                array('user_id' => $user_id, 'data_type' => 'cotizaciones')
+            );
+        } else {
+            $result = $wpdb->insert(
+                $table_name,
+                array(
+                    'user_id' => $user_id,
+                    'data_type' => 'cotizaciones',
+                    'data_content' => json_encode($cotizaciones)
+                )
+            );
+        }
         
         if ($result !== false) {
-            // Opcional: Enviar email de notificación al administrador
-            $this->notify_admin_new_request($data);
+            // Enviar email de notificación al administrador
+            $this->notify_admin_new_request($data, $cotizacion);
             
             return rest_ensure_response(array(
                 'success' => true,
@@ -411,6 +443,153 @@ class CotizadorEventosWP {
         }
         
         return new WP_Error('save_failed', 'Error al enviar solicitud', array('status' => 500));
+    }
+    
+    /**
+     * Convertir solicitud pública en cotización
+     */
+    private function convertir_solicitud_a_cotizacion($data) {
+        $ahora = new DateTime();
+        $fechaHora = $ahora->format('d/m/Y H:i:s');
+        
+        // Obtener productos configurados para calcular precios
+        $admin_user = get_users(array(
+            'role' => 'administrator',
+            'number' => 1
+        ));
+        $user_id = !empty($admin_user) ? $admin_user[0]->ID : 1;
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cotizador_eventos_data';
+        
+        $productos_admin = $wpdb->get_var($wpdb->prepare(
+            "SELECT data_content FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            'productos'
+        ));
+        
+        $productos_configurados = $productos_admin ? json_decode($productos_admin, true) : array();
+        
+        // Procesar productos seleccionados y calcular precios
+        $productos_cotizacion = array();
+        $subtotal = 0;
+        $costo_total = 0;
+        
+        foreach ($data['productos'] as $producto_solicitud) {
+            // Buscar el producto en la configuración del admin para obtener precios
+            $producto_config = null;
+            foreach ($productos_configurados as $pc) {
+                if ($pc['nombre'] === $producto_solicitud['nombre']) {
+                    $producto_config = $pc;
+                    break;
+                }
+            }
+            
+            if ($producto_config) {
+                $cantidad = $producto_solicitud['cantidad'];
+                $precio_unitario = $producto_config['precio'];
+                $costo_unitario = $producto_config['costo'];
+                $subtotal_producto = $precio_unitario * $cantidad;
+                $costo_producto = $costo_unitario * $cantidad;
+                
+                $productos_cotizacion[] = array(
+                    'id' => $producto_config['id'],
+                    'nombre' => $producto_config['nombre'],
+                    'descripcion' => $producto_config['descripcion'],
+                    'categoria' => $producto_config['categoria'],
+                    'precio' => $precio_unitario,
+                    'costo' => $costo_unitario,
+                    'cantidad' => $cantidad,
+                    'subtotal' => $subtotal_producto
+                );
+                
+                $subtotal += $subtotal_producto;
+                $costo_total += $costo_producto;
+            }
+        }
+        
+        $margen_total = $subtotal - $costo_total;
+        $porcentaje_margen = $costo_total > 0 ? round(($margen_total / $costo_total) * 100, 1) : 0;
+        
+        // Convertir motivos y experiencias de nombres a IDs
+        $motivos_ids = $this->convertir_nombres_a_ids($data['motivos'], 'motivosEvento', $user_id);
+        $experiencias_ids = $this->convertir_nombres_a_ids($data['experiencias'], 'experiencias', $user_id);
+        
+        // Crear la cotización
+        $cotizacion = array(
+            'id' => time() . rand(100, 999), // ID único
+            'fechaCotizacion' => $ahora->format('d/m/Y'),
+            'estado' => 'solicitud_publica', // Estado especial para solicitudes públicas
+            'cliente' => array(
+                'nombre' => $data['cliente']['nombre'] . ' (Solicitud Web)',
+                'email' => $data['cliente']['email'],
+                'telefono' => $data['cliente']['telefono'],
+                'fechaEvento' => $data['cliente']['fechaEvento'],
+                'horaEvento' => explode(' ', $data['cliente']['fechaEvento'])[1] ?? '00:00',
+                'fechaEventoOriginal' => $data['cliente']['fechaEvento'],
+                'cantidadPersonas' => $data['cliente']['cantidadPersonas'],
+                'formatoEvento' => $data['cliente']['formatoEvento']
+            ),
+            'motivos' => $motivos_ids,
+            'experiencias' => $experiencias_ids,
+            'productos' => $productos_cotizacion,
+            'camposPersonalizados' => $data['camposPersonalizados'],
+            'comentarios' => $data['comentarios'],
+            'totales' => array(
+                'subtotal' => $subtotal,
+                'costoTotal' => $costo_total,
+                'margenTotal' => $margen_total,
+                'porcentajeMargen' => $porcentaje_margen
+            ),
+            'versiones' => array(
+                array(
+                    'version' => 1,
+                    'fecha' => $ahora->format('c'),
+                    'datos' => null, // Se llenará después
+                    'descripcion' => 'v1 - ' . $fechaHora . ' (solicitud web)'
+                )
+            ),
+            'versionActual' => 1,
+            'esSolicitudPublica' => true
+        );
+        
+        // Copiar datos para la versión (sin versiones para evitar recursión)
+        $datos_version = $cotizacion;
+        unset($datos_version['versiones']);
+        unset($datos_version['versionActual']);
+        $cotizacion['versiones'][0]['datos'] = $datos_version;
+        
+        return $cotizacion;
+    }
+    
+    /**
+     * Convertir nombres a IDs
+     */
+    private function convertir_nombres_a_ids($nombres, $tipo, $user_id) {
+        if (empty($nombres)) return array();
+        
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'cotizador_eventos_data';
+        
+        $datos_config = $wpdb->get_var($wpdb->prepare(
+            "SELECT data_content FROM $table_name WHERE user_id = %d AND data_type = %s",
+            $user_id,
+            $tipo
+        ));
+        
+        $configurados = $datos_config ? json_decode($datos_config, true) : array();
+        $ids = array();
+        
+        foreach ($nombres as $nombre) {
+            foreach ($configurados as $config) {
+                if ($config['nombre'] === $nombre) {
+                    $ids[] = $config['id'];
+                    break;
+                }
+            }
+        }
+        
+        return $ids;
     }
     
     /**
@@ -439,7 +618,7 @@ class CotizadorEventosWP {
     /**
      * Notificar al administrador sobre nueva solicitud
      */
-    private function notify_admin_new_request($data) {
+    private function notify_admin_new_request($data, $cotizacion) {
         $admin_email = get_option('admin_email');
         $subject = 'Nueva Solicitud de Cotización - ' . get_bloginfo('name');
         
@@ -464,7 +643,12 @@ class CotizadorEventosWP {
             $message .= "Comentarios: " . $data['comentarios'] . "\n\n";
         }
         
-        $message .= "Ingresa al panel de administración para ver más detalles y responder.";
+        if (isset($cotizacion['totales']['subtotal']) && $cotizacion['totales']['subtotal'] > 0) {
+            $message .= "Total estimado: $" . number_format($cotizacion['totales']['subtotal'], 2) . "\n\n";
+        }
+        
+        $message .= "La solicitud ya está disponible en tu panel de administración en " . home_url('/app') . "\n";
+        $message .= "Aparece en el historial de cotizaciones con el estado 'Solicitud Pública'.";
         
         wp_mail($admin_email, $subject, $message);
     }
@@ -517,12 +701,13 @@ class CotizadorEventosWP {
             case 'estadosCotizacion':
                 return array(
                     array('id' => 'borrador', 'nombre' => 'Borrador', 'icono' => '📝', 'color' => '#6c757d', 'orden' => 1),
-                    array('id' => 'enviada', 'nombre' => 'Enviada', 'icono' => '📤', 'color' => '#007bff', 'orden' => 2),
-                    array('id' => 'revisando', 'nombre' => 'En Revisión', 'icono' => '👀', 'color' => '#ffc107', 'orden' => 3),
-                    array('id' => 'negociando', 'nombre' => 'Negociando', 'icono' => '💬', 'color' => '#fd7e14', 'orden' => 4),
-                    array('id' => 'aprobada', 'nombre' => 'Aprobada', 'icono' => '✅', 'color' => '#28a745', 'orden' => 5),
-                    array('id' => 'rechazada', 'nombre' => 'Rechazada', 'icono' => '❌', 'color' => '#dc3545', 'orden' => 6),
-                    array('id' => 'cancelada', 'nombre' => 'Cancelada', 'icono' => '🚫', 'color' => '#6c757d', 'orden' => 7)
+                    array('id' => 'solicitud_publica', 'nombre' => 'Solicitud Pública', 'icono' => '🌐', 'color' => '#17a2b8', 'orden' => 2),
+                    array('id' => 'enviada', 'nombre' => 'Enviada', 'icono' => '📤', 'color' => '#007bff', 'orden' => 3),
+                    array('id' => 'revisando', 'nombre' => 'En Revisión', 'icono' => '👀', 'color' => '#ffc107', 'orden' => 4),
+                    array('id' => 'negociando', 'nombre' => 'Negociando', 'icono' => '💬', 'color' => '#fd7e14', 'orden' => 5),
+                    array('id' => 'aprobada', 'nombre' => 'Aprobada', 'icono' => '✅', 'color' => '#28a745', 'orden' => 6),
+                    array('id' => 'rechazada', 'nombre' => 'Rechazada', 'icono' => '❌', 'color' => '#dc3545', 'orden' => 7),
+                    array('id' => 'cancelada', 'nombre' => 'Cancelada', 'icono' => '🚫', 'color' => '#6c757d', 'orden' => 8)
                 );
                 
             case 'cotizaciones':

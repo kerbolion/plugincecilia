@@ -65,12 +65,13 @@ let categorias = [
 let categoriaEnEdicion = null;
 let estadosCotizacion = [
     { id: 'borrador', nombre: 'Borrador', icono: '📝', color: '#6c757d', orden: 1 },
-    { id: 'enviada', nombre: 'Enviada', icono: '📤', color: '#007bff', orden: 2 },
-    { id: 'revisando', nombre: 'En Revisión', icono: '👀', color: '#ffc107', orden: 3 },
-    { id: 'negociando', nombre: 'Negociando', icono: '💬', color: '#fd7e14', orden: 4 },
-    { id: 'aprobada', nombre: 'Aprobada', icono: '✅', color: '#28a745', orden: 5 },
-    { id: 'rechazada', nombre: 'Rechazada', icono: '❌', color: '#dc3545', orden: 6 },
-    { id: 'cancelada', nombre: 'Cancelada', icono: '🚫', color: '#6c757d', orden: 7 }
+    { id: 'solicitud_publica', nombre: 'Solicitud Pública', icono: '🌐', color: '#17a2b8', orden: 2 },
+    { id: 'enviada', nombre: 'Enviada', icono: '📤', color: '#007bff', orden: 3 },
+    { id: 'revisando', nombre: 'En Revisión', icono: '👀', color: '#ffc107', orden: 4 },
+    { id: 'negociando', nombre: 'Negociando', icono: '💬', color: '#fd7e14', orden: 5 },
+    { id: 'aprobada', nombre: 'Aprobada', icono: '✅', color: '#28a745', orden: 6 },
+    { id: 'rechazada', nombre: 'Rechazada', icono: '❌', color: '#dc3545', orden: 7 },
+    { id: 'cancelada', nombre: 'Cancelada', icono: '🚫', color: '#6c757d', orden: 8 }
 ];
 let estadoEnEdicion = null;
 
@@ -3342,4 +3343,96 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Ejecutar inicialización
     inicializarDatos();
+});
+
+
+// Función para convertir solicitud pública a cotización normal
+function convertirASolicitudNormal(index) {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const cot = cotizaciones[index];
+        
+        if (!cot || !cot.esSolicitudPublica) return;
+        
+        if (confirm('¿Convertir esta solicitud pública a cotización normal? Esto cambiará el estado a "En Revisión" y quitará la marca de solicitud pública.')) {
+            // Cambiar estado y quitar marca de solicitud pública
+            cot.estado = 'revisando';
+            cot.esSolicitudPublica = false;
+            
+            // Limpiar el nombre del cliente (quitar "(Solicitud Web)")
+            cot.cliente.nombre = cot.cliente.nombre.replace(' (Solicitud Web)', '');
+            
+            // Crear nueva versión para el cambio de estado
+            if (!cot.versiones) cot.versiones = [];
+            
+            const ahora = new Date();
+            const fechaHora = `${ahora.toLocaleDateString()} ${ahora.toLocaleTimeString()}`;
+            const siguienteVersion = Math.max(...cot.versiones.map(v => v.version)) + 1;
+            
+            const datosParaVersion = copiarProfundo(cot);
+            delete datosParaVersion.versiones;
+            delete datosParaVersion.versionActual;
+            
+            cot.versiones.push({
+                version: siguienteVersion,
+                fecha: ahora.toISOString(),
+                datos: datosParaVersion,
+                descripcion: `v${siguienteVersion} - ${fechaHora} (procesada de solicitud pública)`
+            });
+            cot.versionActual = siguienteVersion;
+            
+            // Guardar cambios
+            guardarDatosEnAPI('cotizaciones', cotizaciones).then(() => {
+                cargarHistorialCotizaciones();
+                mostrarAlerta('alertHistorial', 'Solicitud convertida a cotización normal exitosamente.', 'success');
+            });
+        }
+    });
+}
+
+// Función para resaltar solicitudes públicas pendientes
+function contarSolicitudesPendientes() {
+    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+        const solicitudesPendientes = cotizaciones.filter(cot => 
+            cot.esSolicitudPublica || cot.estado === 'solicitud_publica'
+        ).length;
+        
+        if (solicitudesPendientes > 0) {
+            // Agregar badge al tab de historial
+            const tabHistorial = document.querySelector('.tab[onclick="showTab(\'historial\')"]');
+            if (tabHistorial && !tabHistorial.querySelector('.badge-solicitudes')) {
+                const badge = document.createElement('span');
+                badge.className = 'badge-solicitudes';
+                badge.innerHTML = solicitudesPendientes;
+                badge.style.cssText = `
+                    background: #dc3545; 
+                    color: white; 
+                    border-radius: 50%; 
+                    padding: 2px 6px; 
+                    font-size: 0.7rem; 
+                    margin-left: 5px;
+                    animation: pulse 2s infinite;
+                `;
+                tabHistorial.appendChild(badge);
+                
+                // Agregar animación CSS si no existe
+                if (!document.getElementById('pulseAnimation')) {
+                    const style = document.createElement('style');
+                    style.id = 'pulseAnimation';
+                    style.textContent = `
+                        @keyframes pulse {
+                            0% { transform: scale(1); }
+                            50% { transform: scale(1.1); }
+                            100% { transform: scale(1); }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            }
+        }
+    });
+}
+
+// Llamar esta función al cargar la página para mostrar solicitudes pendientes
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(contarSolicitudesPendientes, 1000);
 });
