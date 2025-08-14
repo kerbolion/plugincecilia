@@ -136,7 +136,7 @@ function copiarProfundo(obj) {
 }
 
 // Función para actualizar el resumen en tiempo real - CORREGIDA
-function actualizarResumenTiempoReal() {
+async function actualizarResumenTiempoReal() {
     const nombreCliente = document.getElementById('nombreCliente').value.trim();
     const emailCliente = document.getElementById('emailCliente').value.trim();
     const telefonoCliente = document.getElementById('telefonoCliente').value.trim();
@@ -173,7 +173,7 @@ function actualizarResumenTiempoReal() {
     });
 
     if (productosSeleccionados.length === 0) {
-        mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados);
+        await mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados);
         return;
     }
 
@@ -214,11 +214,11 @@ function actualizarResumenTiempoReal() {
         }
     };
 
-    mostrarResumenCotizacion();
+    await mostrarResumenCotizacion();
 }
 
 // Función para mostrar resumen vacío - CORREGIDA
-function mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados) {
+async function mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fechaEvento, cantidadPersonas, formatoEvento, estadoSeleccionado, motivosSeleccionados, experienciasSeleccionadas, valoresCamposPersonalizados) {
     const container = document.getElementById('resumenCotizacion');
     const estadoCotizacion = estadosCotizacion.find(est => est.id === estadoSeleccionado) || estadosCotizacion[0];
 
@@ -255,7 +255,7 @@ function mostrarResumenVacio(nombreCliente, emailCliente, telefonoCliente, fecha
         `;
     }
 
-    const politicas = localStorage.getItem('politicas') || '';
+    const politicas = await cargarDatosDesdeAPI('politicas') || '';
 
     let html = `
         <div class="cotizacion-resumen">
@@ -545,8 +545,8 @@ function agregarEventosActualizacion() {
 }
 
 // Función para procesar plantilla - CORREGIDA
-function procesarPlantilla(plantilla, cotizacion) {
-    const politicas = localStorage.getItem('politicas') || '';
+async function procesarPlantilla(plantilla, cotizacion) {
+    const politicas = await cargarDatosDesdeAPI('politicas') || '';
     
     const motivosTexto = cotizacion.motivos && cotizacion.motivos.length > 0 
         ? 'Motivo del Evento:\n' + cotizacion.motivos.map(id => {
@@ -605,7 +605,7 @@ function procesarPlantilla(plantilla, cotizacion) {
 }
 
 // Función para mostrar resumen de cotización - CORREGIDA
-function mostrarResumenCotizacion() {
+async function mostrarResumenCotizacion() {
     const container = document.getElementById('resumenCotizacion');
     const cot = cotizacionActual;
 
@@ -644,7 +644,7 @@ function mostrarResumenCotizacion() {
         `;
     }
 
-    const politicas = localStorage.getItem('politicas') || '';
+    const politicas = await cargarDatosDesdeAPI('politicas') || '';
 
     let html = `
         <div class="cotizacion-resumen">
@@ -1623,14 +1623,14 @@ POLÍTICAS:
     return plantilla;
 }
 
-function previsualizarPlantilla() {
+async function previsualizarPlantilla() {
     if (!cotizacionActual.id) {
         mostrarAlerta('alertPlantilla', 'No hay una cotización actual para previsualizar. Ve al Cotizador y completa una cotización primero.', 'error');
         return;
     }
     
     const plantilla = document.getElementById('plantillaDescarga').value;
-    const contenidoGenerado = procesarPlantilla(plantilla, cotizacionActual);
+    const contenidoGenerado = await procesarPlantilla(plantilla, cotizacionActual);
     
     const modalHtml = `
         <div id="modalPrevia" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center;" onclick="cerrarModalPrevia()">
@@ -1661,9 +1661,9 @@ function cerrarModalPrevia() {
     }
 }
 
-function descargarPrevisualizacion() {
+async function descargarPrevisualizacion() {
     const plantilla = document.getElementById('plantillaDescarga').value;
-    const contenidoGenerado = procesarPlantilla(plantilla, cotizacionActual);
+    const contenidoGenerado = await procesarPlantilla(plantilla, cotizacionActual);
     
     const blob = new Blob([contenidoGenerado], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -2953,14 +2953,14 @@ function crearNuevaVersion(cotizacionExistente, nuevosDatos) {
     cotizacionExistente.versionActual = siguienteVersion;
 }
 
-function descargarCotizacion() {
+async function descargarCotizacion() {
     if (!cotizacionActual.id) {
         mostrarAlerta('alertCotizacion', 'No hay cotización para descargar.', 'error');
         return;
     }
 
-    const plantilla = localStorage.getItem('plantillaDescarga') || obtenerPlantillaDefecto();
-    const contenido = procesarPlantilla(plantilla, cotizacionActual);
+    const plantilla = await cargarDatosDesdeAPI('plantillaDescarga') || obtenerPlantillaDefecto();
+    const contenido = await procesarPlantilla(plantilla, cotizacionActual);
 
     const blob = new Blob([contenido], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -3221,15 +3221,14 @@ function duplicarCotizacion(index) {
     });
 }
 
-function descargarCotizacionIndividual(index) {
-    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
-        const cot = cotizaciones[index];
-        
-        if (!cot) return;
+async function descargarCotizacionIndividual(index) {
+    const cotizaciones = await cargarDatosDesdeAPI('cotizaciones');
+    const cot = cotizaciones[index];
+    
+    if (!cot) return;
 
-        cotizacionActual = cot;
-        descargarCotizacion();
-    });
+    cotizacionActual = cot;
+    await descargarCotizacion();
 }
 
 function eliminarCotizacion(index) {
@@ -3915,11 +3914,11 @@ function restaurarVersion(cotizacionId, numeroVersion) {
     });
 }
 
-function crearRamaDesdeVersion(cotizacionId, numeroVersion) {
+async function crearRamaDesdeVersion(cotizacionId, numeroVersion) {
     const descripcion = prompt(`Ingresa una descripción para la nueva rama basada en la versión ${numeroVersion}:`);
     if (!descripcion) return;
     
-    cargarDatosDesdeAPI('cotizaciones').then(cotizaciones => {
+    const cotizaciones = await cargarDatosDesdeAPI('cotizaciones');
         const cotizacion = cotizaciones.find(cot => cot.id === cotizacionId);
         
         if (!cotizacion) return;
@@ -3939,10 +3938,9 @@ function crearRamaDesdeVersion(cotizacionId, numeroVersion) {
         
         showTab('cotizador');
         
-        mostrarResumenCotizacion();
+        await mostrarResumenCotizacion();
         
         mostrarAlerta('alertCotizacion', `Rama creada desde versión ${numeroVersion}. Puedes modificar y guardar como nueva cotización.`, 'success');
-    });
 }
 
 // Inicializar la aplicación
